@@ -1,11 +1,20 @@
 import "server-only";
-import { getDb, requireDb } from "@/lib/db/client";
+import { getDb } from "@/lib/db/client";
 import { DEV_USER_ID } from "@/lib/constants";
 import type { Chapter, ChapterPlan } from "@/lib/db/types";
+import {
+  memCreateChapter,
+  memDeleteChapter,
+  memGetChapter,
+  memListChapters,
+  memReorderChapters,
+  memReplaceChapters,
+  memUpdateChapter,
+} from "@/lib/db/memory-store";
 
 export async function listChapters(bookId: string): Promise<Chapter[]> {
   const db = getDb();
-  if (!db) return [];
+  if (!db) return memListChapters(bookId);
   const { data, error } = await db
     .from("chapters")
     .select("*")
@@ -20,7 +29,7 @@ export async function listChapters(bookId: string): Promise<Chapter[]> {
 
 export async function getChapter(id: string): Promise<Chapter | null> {
   const db = getDb();
-  if (!db) return null;
+  if (!db) return memGetChapter(id);
   const { data, error } = await db.from("chapters").select("*").eq("id", id).maybeSingle();
   if (error) {
     console.error("getChapter", error.message);
@@ -34,16 +43,15 @@ export async function createChapter(
   input: Partial<Chapter> = {},
   userId: string = DEV_USER_ID,
 ): Promise<Chapter> {
-  const db = requireDb();
-  // Default new chapters to the end of the order.
+  const db = getDb();
+  if (!db) return memCreateChapter(bookId, input, userId);
   const existing = await listChapters(bookId);
-  const nextIndex = existing.length;
   const { data, error } = await db
     .from("chapters")
     .insert({
       book_id: bookId,
       user_id: userId,
-      order_index: input.order_index ?? nextIndex,
+      order_index: input.order_index ?? existing.length,
       title: input.title ?? "Untitled chapter",
       goal: input.goal ?? null,
       summary: input.summary ?? null,
@@ -64,7 +72,8 @@ export async function replaceChapters(
   plans: ChapterPlan[],
   userId: string = DEV_USER_ID,
 ): Promise<Chapter[]> {
-  const db = requireDb();
+  const db = getDb();
+  if (!db) return memReplaceChapters(bookId, plans, userId);
   await db.from("chapters").delete().eq("book_id", bookId);
   if (plans.length === 0) return [];
   const rows = plans.map((p, i) => ({
@@ -89,7 +98,8 @@ export async function updateChapter(
     Pick<Chapter, "title" | "goal" | "summary" | "key_points" | "estimated_word_count" | "content" | "status" | "order_index">
   >,
 ): Promise<Chapter> {
-  const db = requireDb();
+  const db = getDb();
+  if (!db) return memUpdateChapter(id, patch);
   const { data, error } = await db
     .from("chapters")
     .update(patch)
@@ -101,14 +111,16 @@ export async function updateChapter(
 }
 
 export async function deleteChapter(id: string): Promise<void> {
-  const db = requireDb();
+  const db = getDb();
+  if (!db) return memDeleteChapter(id);
   const { error } = await db.from("chapters").delete().eq("id", id);
   if (error) throw new Error(error.message);
 }
 
 /** Persist a new ordering. `orderedIds` is the desired top-to-bottom order. */
 export async function reorderChapters(orderedIds: string[]): Promise<void> {
-  const db = requireDb();
+  const db = getDb();
+  if (!db) return memReorderChapters(orderedIds);
   await Promise.all(
     orderedIds.map((id, index) =>
       db.from("chapters").update({ order_index: index }).eq("id", id),

@@ -1,11 +1,18 @@
 import "server-only";
-import { getDb, requireDb } from "@/lib/db/client";
+import { getDb } from "@/lib/db/client";
 import { DEV_USER_ID } from "@/lib/constants";
 import type { Book, NewBookInput } from "@/lib/db/types";
+import {
+  memCreateBook,
+  memDeleteBook,
+  memGetBook,
+  memListBooks,
+  memUpdateBook,
+} from "@/lib/db/memory-store";
 
 export async function listBooks(userId: string = DEV_USER_ID): Promise<Book[]> {
   const db = getDb();
-  if (!db) return [];
+  if (!db) return memListBooks(userId);
   const { data, error } = await db
     .from("books")
     .select("*")
@@ -20,7 +27,7 @@ export async function listBooks(userId: string = DEV_USER_ID): Promise<Book[]> {
 
 export async function getBook(id: string): Promise<Book | null> {
   const db = getDb();
-  if (!db) return null;
+  if (!db) return memGetBook(id);
   const { data, error } = await db.from("books").select("*").eq("id", id).maybeSingle();
   if (error) {
     console.error("getBook", error.message);
@@ -33,7 +40,8 @@ export async function createBook(
   input: NewBookInput,
   userId: string = DEV_USER_ID,
 ): Promise<Book> {
-  const db = requireDb();
+  const db = getDb();
+  if (!db) return memCreateBook(input, userId);
   const { data, error } = await db
     .from("books")
     .insert({
@@ -53,7 +61,8 @@ export async function updateBook(
   id: string,
   patch: Partial<Pick<Book, "title" | "subtitle" | "book_type" | "status" | "cover_emoji">>,
 ): Promise<Book> {
-  const db = requireDb();
+  const db = getDb();
+  if (!db) return memUpdateBook(id, patch);
   const { data, error } = await db
     .from("books")
     .update(patch)
@@ -65,7 +74,8 @@ export async function updateBook(
 }
 
 export async function deleteBook(id: string): Promise<void> {
-  const db = requireDb();
+  const db = getDb();
+  if (!db) return memDeleteBook(id);
   const { error } = await db.from("books").delete().eq("id", id);
   if (error) throw new Error(error.message);
 }

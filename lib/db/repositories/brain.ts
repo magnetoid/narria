@@ -1,7 +1,8 @@
 import "server-only";
-import { getDb, requireDb } from "@/lib/db/client";
+import { getDb } from "@/lib/db/client";
 import { DEV_USER_ID } from "@/lib/constants";
 import type { BookBrain } from "@/lib/db/types";
+import { memGetBrain, memUpsertBrain } from "@/lib/db/memory-store";
 
 export type BrainPatch = Partial<
   Omit<BookBrain, "id" | "book_id" | "user_id" | "created_at" | "updated_at">
@@ -9,7 +10,7 @@ export type BrainPatch = Partial<
 
 export async function getBrain(bookId: string): Promise<BookBrain | null> {
   const db = getDb();
-  if (!db) return null;
+  if (!db) return memGetBrain(bookId);
   const { data, error } = await db
     .from("book_brain")
     .select("*")
@@ -28,7 +29,8 @@ export async function upsertBrain(
   patch: BrainPatch,
   userId: string = DEV_USER_ID,
 ): Promise<BookBrain> {
-  const db = requireDb();
+  const db = getDb();
+  if (!db) return memUpsertBrain(bookId, patch, userId);
   const { data, error } = await db
     .from("book_brain")
     .upsert(
