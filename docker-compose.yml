@@ -1,0 +1,35 @@
+# Narria — web app container.
+#
+# Coolify: deploy this repo as an Application with build pack "Dockerfile" (preferred),
+# or as a "Docker Compose" resource using this file. Set the domain to
+# https://narria.dotbooks.store in the Coolify UI; it provisions SSL automatically.
+# Supply env vars in the Coolify UI (see .env.example) — do NOT commit real secrets.
+#
+# Supabase: run it as a separate Coolify one-click service (keeps everything in Docker)
+# or point at Supabase cloud. The app connects to either via NEXT_PUBLIC_SUPABASE_URL +
+# keys — no code change. See DEPLOY.md.
+#
+# Local production test:  cp .env.example .env.local && docker compose up --build
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: narria-web:latest
+    container_name: narria-web
+    restart: unless-stopped
+    env_file:
+      - .env.local
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

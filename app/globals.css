@@ -1,0 +1,171 @@
+@import "tailwindcss";
+
+/*
+  Narria design system — warm, editorial, calm.
+  Static color + radius tokens live in @theme (emitted as :root vars, usable in
+  custom CSS too). Font tokens reference next/font vars, so they go in @theme inline.
+*/
+@theme {
+  /* Surfaces */
+  --color-paper: #f7f4ed; /* app background — warm cream */
+  --color-surface: #fefcf8; /* cards / raised surfaces */
+  --color-surface-2: #f1ece1; /* subtle hover / inset */
+
+  /* Ink */
+  --color-ink: #262119; /* primary text */
+  --color-ink-soft: #5c5446; /* secondary text */
+  --color-muted: #8a8173; /* tertiary / captions */
+
+  /* Lines */
+  --color-line: #e6dfd1;
+  --color-line-strong: #d8cfbd;
+
+  /* Accent — clay / terracotta (editorial warmth) */
+  --color-accent: #bc6b4c;
+  --color-accent-hover: #a55a3d;
+  --color-accent-soft: #f3e6df;
+
+  /* Secondary — sage (fiction / success / calm) */
+  --color-sage: #5e7059;
+  --color-sage-soft: #e6ebe1;
+
+  /* Feedback */
+  --color-danger: #b4453c;
+  --color-danger-soft: #f4e1de;
+  --color-gold: #b08a3e;
+  --color-gold-soft: #f1e8d4;
+
+  /* Semantic aliases */
+  --color-background: var(--color-paper);
+  --color-foreground: var(--color-ink);
+
+  /* Radii */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 0.875rem;
+  --radius-xl: 1.125rem;
+  --radius-2xl: 1.5rem;
+}
+
+@theme inline {
+  --font-sans: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  --font-display: var(--font-fraunces), Georgia, serif;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-feature-settings: "cv02", "cv03", "cv04";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--font-serif);
+    color: var(--color-ink);
+    letter-spacing: -0.01em;
+  }
+
+  ::selection {
+    background-color: var(--color-accent-soft);
+    color: var(--color-ink);
+  }
+
+  *:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Calm, thin scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--color-line-strong);
+    border-radius: 9999px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .text-pretty {
+    text-wrap: pretty;
+  }
+  /* Soft, layered card shadow tuned for cream surfaces */
+  .shadow-paper {
+    box-shadow:
+      0 1px 2px rgba(38, 33, 25, 0.04),
+      0 4px 16px rgba(38, 33, 25, 0.05);
+  }
+  .shadow-paper-lg {
+    box-shadow:
+      0 2px 4px rgba(38, 33, 25, 0.05),
+      0 12px 36px rgba(38, 33, 25, 0.08);
+  }
+  /* Editorial italic accent */
+  .accent-italic {
+    font-family: var(--font-serif);
+    font-style: italic;
+  }
+}
+
+/* Tiptap / manuscript prose */
+.manuscript {
+  font-family: var(--font-serif);
+  color: var(--color-ink);
+  font-size: 1.0625rem;
+  line-height: 1.85;
+}
+.manuscript:focus {
+  outline: none;
+}
+.manuscript p {
+  margin: 0 0 1.1em;
+}
+.manuscript h1, .manuscript h2, .manuscript h3 {
+  margin: 1.6em 0 0.5em;
+  line-height: 1.25;
+}
+.manuscript h1 { font-size: 1.8rem; }
+.manuscript h2 { font-size: 1.4rem; }
+.manuscript h3 { font-size: 1.18rem; }
+.manuscript blockquote {
+  border-left: 3px solid var(--color-accent);
+  padding-left: 1.1em;
+  margin: 1.2em 0;
+  color: var(--color-ink-soft);
+  font-style: italic;
+}
+.manuscript ul, .manuscript ol {
+  margin: 0 0 1.1em;
+  padding-left: 1.4em;
+}
+.manuscript li { margin: 0.3em 0; }
+.manuscript em { font-style: italic; }
+.manuscript strong { font-weight: 600; }
+.manuscript .is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--color-muted);
+  pointer-events: none;
+  height: 0;
+  font-style: italic;
+}
