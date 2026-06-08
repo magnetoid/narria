@@ -8,7 +8,7 @@ import { ChapterEditor, type ChapterEditorHandle } from "./chapter-editor";
 import { ChapterList } from "./chapter-list";
 import { AiPanel } from "./ai-panel";
 import { updateChapterAction } from "@/lib/actions/chapters";
-import { wordCount, wordsLabel, cn } from "@/lib/utils";
+import { wordCount, wordsLabel } from "@/lib/utils";
 import type { Book, Chapter } from "@/lib/db/types";
 
 export function ChapterWorkspace({

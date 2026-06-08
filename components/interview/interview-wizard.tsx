@@ -4,7 +4,6 @@ import { useMemo, useState, useTransition } from "react";
 import { ArrowLeft, ArrowRight, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Spinner } from "@/components/ui/spinner";
 import {
   finishInterview,
   saveInterview,
@@ -116,7 +115,8 @@ export function InterviewWizard({
           className="mt-6 min-h-40 text-base"
           onKeyDown={(e) => {
             if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-              isLast ? finish() : goNext();
+              if (isLast) finish();
+              else goNext();
             }
           }}
         />
