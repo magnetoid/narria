@@ -1,32 +1,49 @@
-# Narria — web app container.
+# Narria — Coolify "Docker Compose" deployment.
 #
-# Coolify: deploy this repo as an Application with build pack "Dockerfile" (preferred),
-# or as a "Docker Compose" resource using this file. Set the domain to
-# https://narria.dotbooks.store in the Coolify UI; it provisions SSL automatically.
-# Supply env vars in the Coolify UI (see .env.example) — do NOT commit real secrets.
+# In Coolify: New Resource → Docker Compose → point at this repo (compose path
+# docker-compose.yml). Coolify builds `web` from the Dockerfile, provisions SSL,
+# and routes the domain below to the container — no manual Traefik labels needed.
 #
-# Supabase: run it as a separate Coolify one-click service (keeps everything in Docker)
-# or point at Supabase cloud. The app connects to either via NEXT_PUBLIC_SUPABASE_URL +
-# keys — no code change. See DEPLOY.md.
+# Domain/SSL is driven by the SERVICE_FQDN_WEB_3000 magic variable (Coolify maps
+# that FQDN → web:3000). Edit it here or override it in the Coolify UI.
 #
-# Local production test:  cp .env.example .env.local && docker compose up --build
+# Set the Supabase + Anthropic values as environment variables in the Coolify UI
+# (they're injected at runtime — no rebuild needed). Leave ANTHROPIC_API_KEY unset
+# to run on the built-in mock AI provider.
+#
+# Supabase itself: deploy it as a separate Coolify one-click service (keeps
+# everything in Docker) or use Supabase cloud — the app connects to either via the
+# same vars. See DEPLOY.md. Run supabase/migrations/0001_init.sql once.
+#
+# Local production test:  docker compose up --build   →  http://localhost:3000
+# (docker-compose.override.yml adds the host port; the app runs on the mock +
+#  in-memory store with zero config.)
 
 services:
   web:
     build:
       context: .
       dockerfile: Dockerfile
-    image: narria-web:latest
-    container_name: narria-web
     restart: unless-stopped
-    env_file:
-      - .env.local
+    expose:
+      - "3000"
     environment:
-      NODE_ENV: production
-      PORT: "3000"
-      HOSTNAME: "0.0.0.0"
-    ports:
-      - "3000:3000"
+      # Coolify provisions SSL + proxy routing for this FQDN → web:3000.
+      # Replace with your domain, or set it in the Coolify UI.
+      - SERVICE_FQDN_WEB_3000=https://narria.dotbooks.store
+      - NEXT_PUBLIC_SITE_URL=https://narria.dotbooks.store
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      # Supabase — set in the Coolify UI (runtime; cloud or self-hosted)
+      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL:-}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-}
+      # AI — optional. Omit ANTHROPIC_API_KEY to use the deterministic mock provider.
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - NARRIA_MODEL_DEFAULT=${NARRIA_MODEL_DEFAULT:-claude-opus-4-8}
+      - NARRIA_MODEL_WRITER=${NARRIA_MODEL_WRITER:-claude-sonnet-4-6}
+      - NARRIA_MODEL_METADATA=${NARRIA_MODEL_METADATA:-claude-haiku-4-5}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
       interval: 30s

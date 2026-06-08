@@ -1,0 +1,9 @@
+# Local-only overrides. `docker compose` auto-merges this on your machine;
+# Coolify ignores it (it uses only docker-compose.yml). Publishes the app on
+# localhost:3000 for local production testing. To exercise Supabase/Anthropic
+# locally, add an env_file here or export the vars before `docker compose up`.
+
+services:
+  web:
+    ports:
+      - "3000:3000"
