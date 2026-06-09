@@ -2,6 +2,7 @@
   "name": "narria",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.30.3",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -36,5 +37,13 @@
     "eslint-config-next": "16.2.7",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "sharp",
+      "unrs-resolver",
+      "@tailwindcss/oxide",
+      "esbuild"
+    ]
   }
 }
