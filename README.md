@@ -1,36 +1,88 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+<div align="center">
 
-## Getting Started
+# 📖 Narria
 
-First, run the development server:
+### From idea to published book.
+
+An AI + human-assisted book-writing studio — not a chatbot. Narria turns an idea,
+a memory, or a pile of notes into a structured, polished, publication-ready book
+through **guided workflows**, never a blank prompt box.
+
+</div>
+
+---
+
+## What it does
+
+| Module | What it gives you |
+|---|---|
+| 🪄 **AI Interview** | A guided, one-question-at-a-time interview tailored to your book type. |
+| 🧠 **Book Brain** | Your book's single source of truth — audience, tone, style, goals, key ideas, characters, rules. Every AI action honors it. |
+| 🗂️ **Outline Generator** | A complete, editable table of contents — drag to reorder, add, remove, regenerate. |
+| ✍️ **Chapter Workspace** | A focused 3-pane editor (chapters · manuscript · AI) with 11 guided actions including streaming *Continue writing*. |
+| 🚀 **Publish Center** | Description, bio, subtitles, keywords, categories, back-cover & sales copy — plus **DOCX export**. |
+| 🤖 **7 AI agents** | Book Planner, Chapter Writer, Editor, Critic, Research Assistant, Fact-Check, Metadata. |
+
+The core principle: **every AI action is a named button**, and **every agent is fed
+the Book Brain** so output stays in your voice.
+
+## Tech stack
+
+Next.js 16 (App Router) · TypeScript · Tailwind v4 · Supabase (Postgres) · Anthropic
+Claude (behind a swappable provider) · Tiptap · `docx`.
+
+## Quickstart (zero setup)
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+pnpm dev      # → http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+It runs **with no Supabase and no API key** — data lives in an in-memory store and
+AI runs on a deterministic mock provider. Add credentials to go live for real:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+cp .env.example .env.local
+# NEXT_PUBLIC_SUPABASE_URL / ANON / SERVICE_ROLE  → persist data (run supabase/migrations/0001_init.sql)
+# ANTHROPIC_API_KEY                               → real Claude output
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+> Note: Turbopack **dev** can be slow/unstable in some environments. For a faithful
+> production run, use the standalone build: `pnpm build && node .next/standalone/server.js`
+> (copy `.next/static` + `public` into `.next/standalone/` first). Don't run `build`
+> and `dev` at the same time.
 
-## Learn More
+## Architecture
 
-To learn more about Next.js, take a look at the following resources:
+```
+app/                     # routes (dashboard, /books/[id]/{interview,brain,outline,chapters,publish}, /api/*)
+components/              # ui primitives · layout · interview · brain · outline · editor · publish
+lib/
+  db/                   # Supabase client + repositories (+ in-memory fallback)
+  ai/                   # AIProvider interface · mock & anthropic adapters · prompts · schemas · 7 agents
+  actions/              # server actions (books, interview, brain, chapters, chapter-ai, outline, publish)
+supabase/migrations/    # 0001_init.sql
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **Data** flows through repositories only (`lib/db/repositories/*`) — Supabase when
+  configured, an in-memory store otherwise.
+- **AI** flows through `lib/ai` — swap Anthropic for any OpenAI-compatible backend by
+  adding one provider implementation. Per-agent models are env-overridable.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Deploy
 
-## Deploy on Vercel
+Dockerized (multi-stage standalone) for **Coolify**, targeting **narria.dotbooks.store**.
+See **[DEPLOY.md](DEPLOY.md)** for the Docker Compose / Dockerfile recipe and Supabase setup.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+docker compose up --build   # local production test → http://localhost:3000
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Scripts
+
+```bash
+pnpm dev      # dev server
+pnpm build    # production build (standalone)
+pnpm start    # serve the build
+pnpm lint     # eslint
+```
