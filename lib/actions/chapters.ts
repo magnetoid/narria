@@ -20,6 +20,8 @@ export async function generateOutlineAction(
 ): Promise<{ ok: true } | { error: string }> {
   const parsedId = idSchema.safeParse(bookId);
   if (!parsedId.success) return { error: "Invalid book id." };
+  // idSchema trims — use the parsed id everywhere so reads and writes share one key.
+  bookId = parsedId.data;
   const book = await getBook(bookId);
   if (!book) return { error: "Book not found." };
   const brain = await getBrain(bookId);

@@ -16,6 +16,8 @@ export async function runChapterEdit(
 ): Promise<{ text: string } | { error: string }> {
   const parsed = chapterEditInput.safeParse({ actionId, bookId, chapterId, selection });
   if (!parsed.success) return { error: "Invalid edit request." };
+  // idSchema trims — use the parsed ids everywhere so reads and writes share one key.
+  ({ bookId, chapterId } = parsed.data);
   const book = await getBook(bookId);
   const chapter = await getChapter(chapterId);
   if (!book || !chapter) return { error: "Chapter not found." };
@@ -37,6 +39,8 @@ export async function runChapterReview(
 ): Promise<{ text: string } | { error: string }> {
   const parsed = chapterReviewInput.safeParse({ actionId, bookId, chapterId, content });
   if (!parsed.success) return { error: "Invalid review request." };
+  // idSchema trims — use the parsed ids everywhere so reads and writes share one key.
+  ({ bookId, chapterId } = parsed.data);
   const book = await getBook(bookId);
   const chapter = await getChapter(chapterId);
   if (!book || !chapter) return { error: "Chapter not found." };

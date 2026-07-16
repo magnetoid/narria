@@ -17,6 +17,8 @@ export async function generateAssetAction(
   const parsedId = idSchema.safeParse(bookId);
   const parsedKind = publishAssetKind.safeParse(kind);
   if (!parsedId.success || !parsedKind.success) return { error: "Invalid asset request." };
+  // idSchema trims — use the parsed id everywhere so reads and writes share one key.
+  bookId = parsedId.data;
   const book = await getBook(bookId);
   if (!book) return { error: "Book not found." };
   const brain = await getBrain(bookId);

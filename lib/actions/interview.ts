@@ -39,8 +39,10 @@ export async function finishInterview(
   const parsedId = idSchema.safeParse(bookId);
   const parsedEntries = interviewEntriesSchema.safeParse(entries);
   if (!parsedId.success || !parsedEntries.success) return { error: "Invalid interview answers." };
+  // idSchema trims — use the parsed id everywhere so reads and writes share one key.
+  bookId = parsedId.data;
 
-  const book = await getBook(parsedId.data);
+  const book = await getBook(bookId);
   if (!book) return { error: "Book not found." };
 
   const qa = parsedEntries.data.map((e) => ({ question: e.question, answer: e.answer }));
