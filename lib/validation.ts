@@ -15,6 +15,11 @@ const reviewActionIds = CHAPTER_AI_ACTIONS.filter((a) => a.group === "review").m
 // Memory-store ids look like "mem_1a2b3c"; Supabase ids are UUIDs — accept either shape.
 export const idSchema = z.string().trim().min(1).max(200);
 
+// Sign-in inputs. Normalise before validating (z.email() would otherwise reject a
+// padded address); 254 is the practical maximum length of an email address.
+export const emailSchema = z.string().trim().toLowerCase().pipe(z.email().max(254));
+export const oauthProviderSchema = z.enum(["google", "github"]);
+
 const shortText = (max: number) => z.string().max(max);
 const nullableShortText = (max: number) => z.string().max(max).nullable();
 const bigText = z.string().max(60_000);

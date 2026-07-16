@@ -5,7 +5,8 @@ export const SITE = {
   url: process.env.NEXT_PUBLIC_SITE_URL ?? "https://narria.dotbooks.store",
 } as const;
 
-// Single implicit workspace user until real auth lands. Present on every row.
+// Owner of the shared demo workspace. Only reached when no auth is configured and
+// no per-visitor demo cookie exists (build-time prerender) — see lib/auth/session.ts.
 export const DEV_USER_ID = "00000000-0000-0000-0000-000000000001";
 
 // ── Book types ───────────────────────────────────────────────────────────────

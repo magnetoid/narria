@@ -1,6 +1,6 @@
 import "server-only";
 import { getDb } from "@/lib/db/client";
-import { DEV_USER_ID } from "@/lib/constants";
+import { getSessionUser, requireUserId } from "@/lib/auth/session";
 import type { Book, NewBookInput } from "@/lib/db/types";
 import {
   memCreateBook,
@@ -10,7 +10,9 @@ import {
   memUpdateBook,
 } from "@/lib/db/memory-store";
 
-export async function listBooks(userId: string = DEV_USER_ID): Promise<Book[]> {
+export async function listBooks(userId?: string): Promise<Book[]> {
+  userId ??= (await getSessionUser())?.id;
+  if (!userId) return [];
   const db = getDb();
   if (!db) return memListBooks(userId);
   const { data, error } = await db
@@ -25,10 +27,17 @@ export async function listBooks(userId: string = DEV_USER_ID): Promise<Book[]> {
   return (data ?? []) as Book[];
 }
 
-export async function getBook(id: string): Promise<Book | null> {
+export async function getBook(id: string, userId?: string): Promise<Book | null> {
+  userId ??= (await getSessionUser())?.id;
+  if (!userId) return null;
   const db = getDb();
-  if (!db) return memGetBook(id);
-  const { data, error } = await db.from("books").select("*").eq("id", id).maybeSingle();
+  if (!db) return memGetBook(id, userId);
+  const { data, error } = await db
+    .from("books")
+    .select("*")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .maybeSingle();
   if (error) {
     console.error("getBook", error.message);
     return null;
@@ -38,8 +47,9 @@ export async function getBook(id: string): Promise<Book | null> {
 
 export async function createBook(
   input: NewBookInput,
-  userId: string = DEV_USER_ID,
+  userId?: string,
 ): Promise<Book> {
+  userId ??= await requireUserId();
   const db = getDb();
   if (!db) return memCreateBook(input, userId);
   const { data, error } = await db

@@ -6,11 +6,37 @@ import {
   chapterReviewInput,
   continueBody,
   createBookInput,
+  emailSchema,
   idSchema,
   interviewEntries,
   brainPatch,
+  oauthProviderSchema,
   updateBookPatch,
 } from "@/lib/validation";
+
+describe("emailSchema", () => {
+  it("normalises surrounding whitespace and case", () => {
+    expect(emailSchema.parse("  Reader@Example.COM ")).toBe("reader@example.com");
+  });
+
+  it("rejects malformed addresses", () => {
+    for (const bad of ["", "nope", "a@b", "@example.com", "a b@example.com"]) {
+      expect(emailSchema.safeParse(bad).success).toBe(false);
+    }
+  });
+
+  it("rejects an address over the 254-char cap", () => {
+    expect(emailSchema.safeParse(`${"a".repeat(250)}@example.com`).success).toBe(false);
+  });
+});
+
+describe("oauthProviderSchema", () => {
+  it("accepts the supported providers only", () => {
+    expect(oauthProviderSchema.safeParse("google").success).toBe(true);
+    expect(oauthProviderSchema.safeParse("github").success).toBe(true);
+    expect(oauthProviderSchema.safeParse("facebook").success).toBe(false);
+  });
+});
 
 describe("idSchema", () => {
   it("accepts a non-empty id (memory-store or uuid shaped)", () => {

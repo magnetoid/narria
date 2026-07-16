@@ -1,6 +1,7 @@
 import "server-only";
 import { getDb } from "@/lib/db/client";
-import { DEV_USER_ID, type AgentName } from "@/lib/constants";
+import { getSessionUser } from "@/lib/auth/session";
+import { type AgentName } from "@/lib/constants";
 
 export interface GenerationLog {
   book_id?: string | null;
@@ -17,11 +18,14 @@ export interface GenerationLog {
  *  break a user-facing action, and it silently no-ops when DB is unconfigured. */
 export async function logGeneration(
   entry: GenerationLog,
-  userId: string = DEV_USER_ID,
+  userId?: string,
 ): Promise<void> {
   const db = getDb();
   if (!db) return;
   try {
+    // Signed out (real mode only): drop the log rather than attribute it to no one.
+    userId ??= (await getSessionUser())?.id;
+    if (!userId) return;
     await db.from("ai_generations").insert({
       user_id: userId,
       book_id: entry.book_id ?? null,

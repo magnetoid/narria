@@ -4,6 +4,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { BookCard } from "@/components/book-card";
+import { UserMenuSlot } from "@/components/layout/user-menu-slot";
 import { listBooks } from "@/lib/db/repositories/books";
 import { SITE } from "@/lib/constants";
 
@@ -16,10 +17,13 @@ export default async function DashboardPage() {
   return (
     <AppShell
       action={
-        <Link href="/books/new" className={buttonVariants({ size: "sm" })}>
-          <BookPlus className="size-4" />
-          New book
-        </Link>
+        <>
+          <UserMenuSlot className="hidden sm:flex" />
+          <Link href="/books/new" className={buttonVariants({ size: "sm" })}>
+            <BookPlus className="size-4" />
+            New book
+          </Link>
+        </>
       }
     >
       {!hasBooks && (

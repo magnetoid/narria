@@ -47,8 +47,9 @@ export function memListBooks(userId: string): Book[] {
     .filter((b) => b.user_id === userId)
     .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
 }
-export function memGetBook(id: string): Book | null {
-  return books.get(id) ?? null;
+export function memGetBook(id: string, userId: string): Book | null {
+  const book = books.get(id);
+  return book?.user_id === userId ? book : null;
 }
 export function memCreateBook(input: NewBookInput, userId: string): Book {
   const t = now();
@@ -81,8 +82,9 @@ export function memDeleteBook(id: string): void {
 }
 
 // ── brain ──
-export function memGetBrain(bookId: string): BookBrain | null {
-  return brains.get(bookId) ?? null;
+export function memGetBrain(bookId: string, userId: string): BookBrain | null {
+  const brain = brains.get(bookId);
+  return brain?.user_id === userId ? brain : null;
 }
 export function memUpsertBrain(
   bookId: string,
@@ -116,13 +118,14 @@ export function memUpsertBrain(
 }
 
 // ── chapters ──
-export function memListChapters(bookId: string): Chapter[] {
+export function memListChapters(bookId: string, userId: string): Chapter[] {
   return [...chapters.values()]
-    .filter((c) => c.book_id === bookId)
+    .filter((c) => c.book_id === bookId && c.user_id === userId)
     .sort((a, b) => a.order_index - b.order_index);
 }
-export function memGetChapter(id: string): Chapter | null {
-  return chapters.get(id) ?? null;
+export function memGetChapter(id: string, userId: string): Chapter | null {
+  const chapter = chapters.get(id);
+  return chapter?.user_id === userId ? chapter : null;
 }
 export function memCreateChapter(
   bookId: string,
@@ -134,7 +137,7 @@ export function memCreateChapter(
     id: uid(),
     book_id: bookId,
     user_id: userId,
-    order_index: input.order_index ?? memListChapters(bookId).length,
+    order_index: input.order_index ?? memListChapters(bookId, userId).length,
     title: input.title ?? "Untitled chapter",
     goal: input.goal ?? null,
     summary: input.summary ?? null,
@@ -153,7 +156,9 @@ export function memReplaceChapters(
   plans: ChapterPlan[],
   userId: string,
 ): Chapter[] {
-  for (const c of [...chapters.values()]) if (c.book_id === bookId) chapters.delete(c.id);
+  for (const c of [...chapters.values()]) {
+    if (c.book_id === bookId && c.user_id === userId) chapters.delete(c.id);
+  }
   return plans.map((p, i) =>
     memCreateChapter(bookId, { ...p, order_index: i, status: "planned" }, userId),
   );
@@ -176,8 +181,10 @@ export function memReorderChapters(orderedIds: string[]): void {
 }
 
 // ── publish ──
-export function memListAssets(bookId: string): PublishAssetRow[] {
-  return [...assets.values()].filter((a) => a.book_id === bookId);
+export function memListAssets(bookId: string, userId: string): PublishAssetRow[] {
+  return [...assets.values()].filter(
+    (a) => a.book_id === bookId && a.user_id === userId,
+  );
 }
 export function memUpsertAsset(
   bookId: string,

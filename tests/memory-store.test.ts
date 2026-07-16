@@ -25,14 +25,14 @@ beforeEach(() => {
 describe("memory-store books", () => {
   it("creates, gets, updates, and deletes a book", () => {
     const book = memCreateBook({ title: "My Book", book_type: "novel" }, USER);
-    expect(memGetBook(book.id)).toEqual(book);
+    expect(memGetBook(book.id, USER)).toEqual(book);
 
     const updated = memUpdateBook(book.id, { title: "Renamed" });
     expect(updated.title).toBe("Renamed");
-    expect(memGetBook(book.id)?.title).toBe("Renamed");
+    expect(memGetBook(book.id, USER)?.title).toBe("Renamed");
 
     memDeleteBook(book.id);
-    expect(memGetBook(book.id)).toBeNull();
+    expect(memGetBook(book.id, USER)).toBeNull();
   });
 
   it("defaults title to Untitled when blank", () => {
@@ -54,15 +54,15 @@ describe("memory-store cascade delete", () => {
     memUpsertAsset(book.id, "description", { text: "blurb" }, USER);
 
     // sanity: everything is present before delete
-    expect(memGetBrain(book.id)).not.toBeNull();
-    expect(memListChapters(book.id)).toHaveLength(2);
-    expect(memListAssets(book.id)).toHaveLength(1);
+    expect(memGetBrain(book.id, USER)).not.toBeNull();
+    expect(memListChapters(book.id, USER)).toHaveLength(2);
+    expect(memListAssets(book.id, USER)).toHaveLength(1);
 
     memDeleteBook(book.id);
 
-    expect(memGetBrain(book.id)).toBeNull();
-    expect(memListChapters(book.id)).toHaveLength(0);
-    expect(memListAssets(book.id)).toHaveLength(0);
+    expect(memGetBrain(book.id, USER)).toBeNull();
+    expect(memListChapters(book.id, USER)).toHaveLength(0);
+    expect(memListAssets(book.id, USER)).toHaveLength(0);
   });
 
   it("leaves other books' chapters and assets untouched", () => {
@@ -75,8 +75,8 @@ describe("memory-store cascade delete", () => {
 
     memDeleteBook(a.id);
 
-    expect(memListChapters(b.id)).toHaveLength(1);
-    expect(memListAssets(b.id)).toHaveLength(1);
+    expect(memListChapters(b.id, USER)).toHaveLength(1);
+    expect(memListAssets(b.id, USER)).toHaveLength(1);
   });
 });
 
@@ -86,11 +86,11 @@ describe("memory-store chapter reorder", () => {
     const c1 = memCreateChapter(book.id, { title: "One" }, USER);
     const c2 = memCreateChapter(book.id, { title: "Two" }, USER);
     const c3 = memCreateChapter(book.id, { title: "Three" }, USER);
-    expect(memListChapters(book.id).map((c) => c.id)).toEqual([c1.id, c2.id, c3.id]);
+    expect(memListChapters(book.id, USER).map((c) => c.id)).toEqual([c1.id, c2.id, c3.id]);
 
     memReorderChapters([c3.id, c1.id, c2.id]);
 
-    const ordered = memListChapters(book.id);
+    const ordered = memListChapters(book.id, USER);
     expect(ordered.map((c) => c.id)).toEqual([c3.id, c1.id, c2.id]);
     expect(ordered.map((c) => c.order_index)).toEqual([0, 1, 2]);
   });
@@ -104,18 +104,18 @@ describe("memory-store publish asset upsert", () => {
   it("creates on first upsert, updates in place on the next", () => {
     const book = memCreateBook({ title: "Assets", book_type: "novel" }, USER);
     const first = memUpsertAsset(book.id, "keywords", { items: ["a", "b"] }, USER);
-    expect(memListAssets(book.id)).toHaveLength(1);
+    expect(memListAssets(book.id, USER)).toHaveLength(1);
 
     const second = memUpsertAsset(book.id, "keywords", { items: ["c"] }, USER);
     expect(second.id).toBe(first.id);
-    expect(memListAssets(book.id)).toHaveLength(1);
-    expect(memListAssets(book.id)[0].content).toEqual({ items: ["c"] });
+    expect(memListAssets(book.id, USER)).toHaveLength(1);
+    expect(memListAssets(book.id, USER)[0].content).toEqual({ items: ["c"] });
   });
 
   it("keys assets by book + kind, so different kinds coexist", () => {
     const book = memCreateBook({ title: "Assets2", book_type: "novel" }, USER);
     memUpsertAsset(book.id, "description", { text: "x" }, USER);
     memUpsertAsset(book.id, "keywords", { items: ["y"] }, USER);
-    expect(memListAssets(book.id)).toHaveLength(2);
+    expect(memListAssets(book.id, USER)).toHaveLength(2);
   });
 });
