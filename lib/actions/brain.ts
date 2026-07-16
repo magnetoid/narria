@@ -5,13 +5,17 @@ import { getBook } from "@/lib/db/repositories/books";
 import { getBrain, upsertBrain, type BrainPatch } from "@/lib/db/repositories/brain";
 import { synthesizeBrain } from "@/lib/ai/agents/bookPlanner";
 import { interviewQuestions } from "@/lib/interview";
+import { brainPatch as brainPatchSchema, idSchema } from "@/lib/validation";
 
 export async function saveBrain(
   bookId: string,
   patch: BrainPatch,
 ): Promise<{ ok: true } | { error: string }> {
+  const parsedId = idSchema.safeParse(bookId);
+  const parsedPatch = brainPatchSchema.safeParse(patch);
+  if (!parsedId.success || !parsedPatch.success) return { error: "Invalid Book Brain update." };
   try {
-    await upsertBrain(bookId, patch);
+    await upsertBrain(parsedId.data, parsedPatch.data);
     revalidatePath(`/books/${bookId}`, "layout");
     return { ok: true };
   } catch (e) {
@@ -24,6 +28,8 @@ export async function saveBrain(
 export async function regenerateBrain(
   bookId: string,
 ): Promise<{ ok: true } | { error: string }> {
+  const parsedId = idSchema.safeParse(bookId);
+  if (!parsedId.success) return { error: "Invalid book id." };
   const book = await getBook(bookId);
   if (!book) return { error: "Book not found." };
 

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { getBook, updateBook } from "@/lib/db/repositories/books";
 import { upsertBrain } from "@/lib/db/repositories/brain";
 import { synthesizeBrain } from "@/lib/ai/agents/bookPlanner";
+import { idSchema, interviewEntries as interviewEntriesSchema } from "@/lib/validation";
 
 export interface InterviewEntry {
   id: string;
@@ -17,9 +18,13 @@ export async function saveInterview(
   bookId: string,
   entries: InterviewEntry[],
 ): Promise<void> {
-  const interview = Object.fromEntries(entries.map((e) => [e.id, e.answer]));
+  const parsedId = idSchema.safeParse(bookId);
+  const parsedEntries = interviewEntriesSchema.safeParse(entries);
+  if (!parsedId.success || !parsedEntries.success) return; // best-effort; silently skip
+
+  const interview = Object.fromEntries(parsedEntries.data.map((e) => [e.id, e.answer]));
   try {
-    await upsertBrain(bookId, { interview });
+    await upsertBrain(parsedId.data, { interview });
   } catch {
     // best-effort; the final synthesis re-saves everything
   }
@@ -31,11 +36,15 @@ export async function finishInterview(
   bookId: string,
   entries: InterviewEntry[],
 ): Promise<{ error: string } | void> {
-  const book = await getBook(bookId);
+  const parsedId = idSchema.safeParse(bookId);
+  const parsedEntries = interviewEntriesSchema.safeParse(entries);
+  if (!parsedId.success || !parsedEntries.success) return { error: "Invalid interview answers." };
+
+  const book = await getBook(parsedId.data);
   if (!book) return { error: "Book not found." };
 
-  const qa = entries.map((e) => ({ question: e.question, answer: e.answer }));
-  const interview = Object.fromEntries(entries.map((e) => [e.id, e.answer]));
+  const qa = parsedEntries.data.map((e) => ({ question: e.question, answer: e.answer }));
+  const interview = Object.fromEntries(parsedEntries.data.map((e) => [e.id, e.answer]));
 
   try {
     const synth = await synthesizeBrain(book, qa);

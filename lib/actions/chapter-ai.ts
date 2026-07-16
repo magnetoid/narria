@@ -5,6 +5,7 @@ import { getBrain } from "@/lib/db/repositories/brain";
 import { getChapter } from "@/lib/db/repositories/chapters";
 import { transform } from "@/lib/ai/agents/editor";
 import { checkConsistency, summarizeChapter } from "@/lib/ai/agents/critic";
+import { chapterEditInput, chapterReviewInput } from "@/lib/validation";
 
 /** Run a transform action (rewrite/expand/…) on a passage; returns the new text. */
 export async function runChapterEdit(
@@ -13,12 +14,14 @@ export async function runChapterEdit(
   chapterId: string,
   selection: string,
 ): Promise<{ text: string } | { error: string }> {
+  const parsed = chapterEditInput.safeParse({ actionId, bookId, chapterId, selection });
+  if (!parsed.success) return { error: "Invalid edit request." };
   const book = await getBook(bookId);
   const chapter = await getChapter(chapterId);
   if (!book || !chapter) return { error: "Chapter not found." };
   const brain = await getBrain(bookId);
   try {
-    const text = await transform(actionId, book, brain, chapter, selection);
+    const text = await transform(parsed.data.actionId, book, brain, chapter, parsed.data.selection);
     return { text };
   } catch (e) {
     return { error: (e as Error).message };
@@ -32,11 +35,13 @@ export async function runChapterReview(
   chapterId: string,
   content: string,
 ): Promise<{ text: string } | { error: string }> {
+  const parsed = chapterReviewInput.safeParse({ actionId, bookId, chapterId, content });
+  if (!parsed.success) return { error: "Invalid review request." };
   const book = await getBook(bookId);
   const chapter = await getChapter(chapterId);
   if (!book || !chapter) return { error: "Chapter not found." };
   const brain = await getBrain(bookId);
-  const withContent = { ...chapter, content };
+  const withContent = { ...chapter, content: parsed.data.content };
   try {
     const text =
       actionId === "summarize"

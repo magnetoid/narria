@@ -30,6 +30,9 @@ jobs:
       - name: Type-check
         run: pnpm exec tsc --noEmit
 
+      - name: Test
+        run: pnpm test
+
       # Builds with the mock AI provider — no secrets required.
       - name: Build
         run: pnpm build

@@ -9,6 +9,7 @@ import {
 import { getBook } from "@/lib/db/repositories/books";
 import { listChapters } from "@/lib/db/repositories/chapters";
 import { htmlToText } from "@/lib/utils";
+import { idSchema } from "@/lib/validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,6 +19,8 @@ export async function GET(
   { params }: { params: Promise<{ bookId: string }> },
 ) {
   const { bookId } = await params;
+  const parsedId = idSchema.safeParse(bookId);
+  if (!parsedId.success) return new Response("Invalid book id.", { status: 400 });
   const book = await getBook(bookId);
   if (!book) return new Response("Not found", { status: 404 });
 
