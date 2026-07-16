@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { DEMO_UID_COOKIE, isAuthConfigured } from "@/lib/auth/config";
 import { createAuthClient } from "@/lib/auth/supabase";
+import { isDbConfigured } from "@/lib/db/client";
 import { DEV_USER_ID } from "@/lib/constants";
 
 export interface SessionUser {
@@ -23,6 +24,20 @@ export interface SessionUser {
  */
 export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   if (!isAuthConfigured()) {
+    // isDbConfigured() also accepts URL + service-role alone, so the two predicates
+    // can disagree. Demo identity is an unsigned cookie the client sends us: safe
+    // only while the ephemeral memory store is what it addresses. Behind a durable
+    // service-role store (which bypasses RLS by design) that same cookie would be
+    // the sole tenancy check on every tenant's rows, with no way to sign in and
+    // nothing to gate it. Refuse to serve rather than silently drop to no auth.
+    if (isDbConfigured()) {
+      throw new Error(
+        "Supabase is configured for storage but not for sign-in: add NEXT_PUBLIC_SUPABASE_ANON_KEY " +
+          "to enable authentication, or unset NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY " +
+          "to run the zero-setup demo.",
+      );
+    }
+
     const store = await cookies();
     // The proxy mints this per visitor. It is absent during build-time prerender,
     // where DEV_USER_ID keeps the shared workspace readable.

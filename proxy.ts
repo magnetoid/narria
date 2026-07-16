@@ -32,9 +32,11 @@ function demoProxy(request: NextRequest): NextResponse {
     sameSite: "lax",
     path: "/",
     maxAge: ONE_YEAR_SECONDS,
-    // Deliberately not `secure`: a demo served over plain http would otherwise
-    // fail to store the cookie and mint a new workspace on every request. The
-    // value is a random id, not a credential.
+    // Conditional rather than absent: this id addresses a whole workspace, so it
+    // must not cross a plain-http hop in production, but requiring TLS in dev
+    // would stop the cookie being stored at all and mint a new workspace on every
+    // request — silent data loss on the zero-setup path.
+    secure: process.env.NODE_ENV === "production",
   });
   return response;
 }
