@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import type { NextRequest } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { isAuthConfigured } from "@/lib/auth/config";
 import { createAuthClient } from "@/lib/auth/supabase";
 
@@ -22,12 +22,16 @@ export async function GET(request: NextRequest) {
     redirect(`/login?error=${encodeURIComponent("That sign-in link is incomplete.")}`);
   }
 
-  const supabase = await createAuthClient();
+  // See app/auth/confirm/route.ts: the response is built first so the session
+  // cookies and their no-store headers ride back on it, and its Location is
+  // relative rather than derived from the request's host.
+  const response = new NextResponse(null, { status: 303, headers: { Location: "/" } });
+  const supabase = await createAuthClient(response);
   const { error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) {
     redirect(`/login?error=${encodeURIComponent(error.message)}`);
   }
 
   // Always internal — never redirect to a URL from the query string.
-  redirect("/");
+  return response;
 }

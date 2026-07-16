@@ -10,10 +10,35 @@ import { SITE } from "@/lib/constants";
 const NOT_CONFIGURED =
   "Sign-in isn't configured on this deployment — it runs as a demo workspace.";
 
-/** Where Supabase should send the user back to. Derived from the request so magic
- *  links work on localhost and previews, not just the canonical site URL. */
+/** Hosts this deployment answers on. `SITE.url` follows NEXT_PUBLIC_SITE_URL, so a
+ *  preview deployment declares itself there rather than by trusting a header. */
+function isAllowedOriginHost(host: string, hostname: string): boolean {
+  if (host === new URL(SITE.url).host) return true;
+  // Dev only: the local port varies, and outside development a request claiming to
+  // be localhost is a forgery, not a developer.
+  return (
+    process.env.NODE_ENV !== "production" &&
+    (hostname === "localhost" || hostname === "127.0.0.1")
+  );
+}
+
+/** Where Supabase should send the user back to — i.e. where a sign-in token gets
+ *  delivered. The `origin` header is attacker-controlled: a forged one would mail
+ *  the victim a genuine link pointing at the attacker's host, who then redeems the
+ *  token. So the header is honoured only for a host we own; anything else falls
+ *  back to the canonical URL. The Supabase redirect allow-list is a second line of
+ *  defence, not this one — wildcard preview entries make it porous. */
 async function getOrigin(): Promise<string> {
-  return (await headers()).get("origin") ?? SITE.url;
+  const origin = (await headers()).get("origin");
+  if (!origin) return SITE.url;
+  try {
+    const url = new URL(origin);
+    const httpScheme = url.protocol === "http:" || url.protocol === "https:";
+    if (httpScheme && isAllowedOriginHost(url.host, url.hostname)) return url.origin;
+  } catch {
+    // Unparseable header — treat exactly like a hostile one.
+  }
+  return SITE.url;
 }
 
 export async function signInWithMagicLink(

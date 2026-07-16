@@ -21,8 +21,13 @@ function isPublicPath(pathname: string): boolean {
 function demoProxy(request: NextRequest): NextResponse {
   if (request.cookies.has(DEMO_UID_COOKIE)) return NextResponse.next();
 
-  const response = NextResponse.next();
-  response.cookies.set(DEMO_UID_COOKIE, crypto.randomUUID(), {
+  const id = crypto.randomUUID();
+  // Onto the request as well as the response: the render downstream reads cookies()
+  // from the request, so response-only would leave the visitor's *first* page on a
+  // different workspace than every page after it.
+  request.cookies.set(DEMO_UID_COOKIE, id);
+  const response = NextResponse.next({ request });
+  response.cookies.set(DEMO_UID_COOKIE, id, {
     httpOnly: true,
     sameSite: "lax",
     path: "/",

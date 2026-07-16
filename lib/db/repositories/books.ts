@@ -70,22 +70,33 @@ export async function createBook(
 export async function updateBook(
   id: string,
   patch: Partial<Pick<Book, "title" | "subtitle" | "book_type" | "status" | "cover_emoji">>,
+  userId?: string,
 ): Promise<Book> {
+  userId ??= await requireUserId();
   const db = getDb();
-  if (!db) return memUpdateBook(id, patch);
+  if (!db) return memUpdateBook(id, patch, userId);
   const { data, error } = await db
     .from("books")
     .update(patch)
     .eq("id", id)
+    .eq("user_id", userId)
     .select("*")
     .single();
   if (error) throw new Error(error.message);
   return data as Book;
 }
 
-export async function deleteBook(id: string): Promise<void> {
+export async function deleteBook(id: string, userId?: string): Promise<void> {
+  userId ??= await requireUserId();
   const db = getDb();
-  if (!db) return memDeleteBook(id);
-  const { error } = await db.from("books").delete().eq("id", id);
+  if (!db) return memDeleteBook(id, userId);
+  const { error } = await db.from("books").delete().eq("id", id).eq("user_id", userId);
   if (error) throw new Error(error.message);
+}
+
+/** Guard for any write keyed on a bookId that came from the request. Knowing an id
+ *  is not proof of owning it, and getDb() is the service-role client, so without
+ *  this the write would land on whoever's book the id happens to name. */
+export async function assertOwnsBook(bookId: string, userId: string): Promise<void> {
+  if (!(await getBook(bookId, userId))) throw new Error("Book not found.");
 }

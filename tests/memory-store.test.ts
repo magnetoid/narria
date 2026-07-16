@@ -14,6 +14,7 @@ import {
 } from "@/lib/db/memory-store";
 
 const USER = "user_1";
+const OTHER = "user_2";
 
 // The store backs its maps on globalThis (see memory-store.ts) so every route
 // in the process shares one instance — clear it between tests for isolation.
@@ -27,11 +28,11 @@ describe("memory-store books", () => {
     const book = memCreateBook({ title: "My Book", book_type: "novel" }, USER);
     expect(memGetBook(book.id, USER)).toEqual(book);
 
-    const updated = memUpdateBook(book.id, { title: "Renamed" });
+    const updated = memUpdateBook(book.id, { title: "Renamed" }, USER);
     expect(updated.title).toBe("Renamed");
     expect(memGetBook(book.id, USER)?.title).toBe("Renamed");
 
-    memDeleteBook(book.id);
+    memDeleteBook(book.id, USER);
     expect(memGetBook(book.id, USER)).toBeNull();
   });
 
@@ -41,7 +42,30 @@ describe("memory-store books", () => {
   });
 
   it("throws when updating a book that doesn't exist", () => {
-    expect(() => memUpdateBook("does-not-exist", { title: "x" })).toThrow();
+    expect(() => memUpdateBook("does-not-exist", { title: "x" }, USER)).toThrow();
+  });
+
+  // Mirrors the owner-scoped SQL writes: to a non-owner, another user's row must
+  // behave exactly like one that isn't there.
+  it("treats another user's book as not found on update, and ignores their delete", () => {
+    const book = memCreateBook({ title: "Mine", book_type: "novel" }, USER);
+
+    expect(() => memUpdateBook(book.id, { title: "defaced" }, OTHER)).toThrow();
+    memDeleteBook(book.id, OTHER);
+
+    expect(memGetBook(book.id, USER)?.title).toBe("Mine");
+  });
+
+  it("refuses to seed a brain or asset from another user's row", () => {
+    const book = memCreateBook({ title: "Mine", book_type: "novel" }, USER);
+    memUpsertBrain(book.id, { tone: "mine" }, USER);
+    memUpsertAsset(book.id, "description", { text: "mine" }, USER);
+
+    expect(() => memUpsertBrain(book.id, { tone: "stolen" }, OTHER)).toThrow();
+    expect(() => memUpsertAsset(book.id, "description", { text: "stolen" }, OTHER)).toThrow();
+
+    expect(memGetBrain(book.id, USER)?.tone).toBe("mine");
+    expect(memListAssets(book.id, USER)[0].content).toEqual({ text: "mine" });
   });
 });
 
@@ -58,7 +82,7 @@ describe("memory-store cascade delete", () => {
     expect(memListChapters(book.id, USER)).toHaveLength(2);
     expect(memListAssets(book.id, USER)).toHaveLength(1);
 
-    memDeleteBook(book.id);
+    memDeleteBook(book.id, USER);
 
     expect(memGetBrain(book.id, USER)).toBeNull();
     expect(memListChapters(book.id, USER)).toHaveLength(0);
@@ -73,7 +97,7 @@ describe("memory-store cascade delete", () => {
     memUpsertAsset(a.id, "description", { text: "a" }, USER);
     memUpsertAsset(b.id, "description", { text: "b" }, USER);
 
-    memDeleteBook(a.id);
+    memDeleteBook(a.id, USER);
 
     expect(memListChapters(b.id, USER)).toHaveLength(1);
     expect(memListAssets(b.id, USER)).toHaveLength(1);
@@ -88,7 +112,7 @@ describe("memory-store chapter reorder", () => {
     const c3 = memCreateChapter(book.id, { title: "Three" }, USER);
     expect(memListChapters(book.id, USER).map((c) => c.id)).toEqual([c1.id, c2.id, c3.id]);
 
-    memReorderChapters([c3.id, c1.id, c2.id]);
+    memReorderChapters([c3.id, c1.id, c2.id], USER);
 
     const ordered = memListChapters(book.id, USER);
     expect(ordered.map((c) => c.id)).toEqual([c3.id, c1.id, c2.id]);
@@ -96,7 +120,7 @@ describe("memory-store chapter reorder", () => {
   });
 
   it("ignores unknown ids without throwing", () => {
-    expect(() => memReorderChapters(["nonexistent"])).not.toThrow();
+    expect(() => memReorderChapters(["nonexistent"], USER)).not.toThrow();
   });
 });
 

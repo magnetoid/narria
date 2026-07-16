@@ -1,6 +1,7 @@
 import "server-only";
 import { getDb } from "@/lib/db/client";
 import { getSessionUser, requireUserId } from "@/lib/auth/session";
+import { assertOwnsBook } from "@/lib/db/repositories/books";
 import type { PublishAssetKind } from "@/lib/constants";
 import type { PublishAssetRow } from "@/lib/db/types";
 import { memListAssets, memUpsertAsset } from "@/lib/db/memory-store";
@@ -29,6 +30,8 @@ export async function upsertAsset(
   userId?: string,
 ): Promise<PublishAssetRow> {
   userId ??= await requireUserId();
+  // Conflict target is (book_id, kind), not the owner — see upsertBrain.
+  await assertOwnsBook(bookId, userId);
   const db = getDb();
   if (!db) return memUpsertAsset(bookId, kind, content, userId);
   const { data, error } = await db

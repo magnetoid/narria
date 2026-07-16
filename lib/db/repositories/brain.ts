@@ -1,6 +1,7 @@
 import "server-only";
 import { getDb } from "@/lib/db/client";
 import { getSessionUser, requireUserId } from "@/lib/auth/session";
+import { assertOwnsBook } from "@/lib/db/repositories/books";
 import type { BookBrain } from "@/lib/db/types";
 import { memGetBrain, memUpsertBrain } from "@/lib/db/memory-store";
 
@@ -33,6 +34,10 @@ export async function upsertBrain(
   userId?: string,
 ): Promise<BookBrain> {
   userId ??= await requireUserId();
+  // The conflict target is book_id alone, so an unowned bookId would not insert a
+  // new row — it would overwrite the owner's brain and reassign user_id to the
+  // caller, who could then read it through getBrain's owner filter.
+  await assertOwnsBook(bookId, userId);
   const db = getDb();
   if (!db) return memUpsertBrain(bookId, patch, userId);
   const { data, error } = await db

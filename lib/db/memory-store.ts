@@ -67,14 +67,18 @@ export function memCreateBook(input: NewBookInput, userId: string): Book {
   books.set(book.id, book);
   return book;
 }
-export function memUpdateBook(id: string, patch: Partial<Book>): Book {
+export function memUpdateBook(id: string, patch: Partial<Book>, userId: string): Book {
   const b = books.get(id);
-  if (!b) throw new Error("Book not found.");
+  // Someone else's book is indistinguishable from a missing one, mirroring the
+  // owner-scoped SQL update that matches no rows.
+  if (!b || b.user_id !== userId) throw new Error("Book not found.");
   const u = { ...b, ...patch, updated_at: now() };
   books.set(id, u);
   return u;
 }
-export function memDeleteBook(id: string): void {
+export function memDeleteBook(id: string, userId: string): void {
+  // A non-owner's delete matches no rows in SQL, so it is a no-op here too.
+  if (books.get(id)?.user_id !== userId) return;
   books.delete(id);
   brains.delete(id);
   for (const c of [...chapters.values()]) if (c.book_id === id) chapters.delete(c.id);
@@ -92,8 +96,12 @@ export function memUpsertBrain(
   userId: string,
 ): BookBrain {
   const t = now();
+  const existing = brains.get(bookId);
+  // Brains are keyed by book_id alone, so without this another owner's row would
+  // become the base and take the patch. Mirrors assertOwnsBook() on the db path.
+  if (existing && existing.user_id !== userId) throw new Error("Book not found.");
   const base: BookBrain =
-    brains.get(bookId) ??
+    existing ??
     {
       id: uid(),
       book_id: bookId,
@@ -163,20 +171,21 @@ export function memReplaceChapters(
     memCreateChapter(bookId, { ...p, order_index: i, status: "planned" }, userId),
   );
 }
-export function memUpdateChapter(id: string, patch: Partial<Chapter>): Chapter {
+export function memUpdateChapter(id: string, patch: Partial<Chapter>, userId: string): Chapter {
   const c = chapters.get(id);
-  if (!c) throw new Error("Chapter not found.");
+  if (!c || c.user_id !== userId) throw new Error("Chapter not found.");
   const u = { ...c, ...patch, updated_at: now() };
   chapters.set(id, u);
   return u;
 }
-export function memDeleteChapter(id: string): void {
+export function memDeleteChapter(id: string, userId: string): void {
+  if (chapters.get(id)?.user_id !== userId) return;
   chapters.delete(id);
 }
-export function memReorderChapters(orderedIds: string[]): void {
+export function memReorderChapters(orderedIds: string[], userId: string): void {
   orderedIds.forEach((id, i) => {
     const c = chapters.get(id);
-    if (c) chapters.set(id, { ...c, order_index: i });
+    if (c?.user_id === userId) chapters.set(id, { ...c, order_index: i });
   });
 }
 
@@ -195,6 +204,8 @@ export function memUpsertAsset(
   const key = `${bookId}:${kind}`;
   const t = now();
   const ex = assets.get(key);
+  // Keyed by book+kind, not by owner — see memUpsertBrain.
+  if (ex && ex.user_id !== userId) throw new Error("Book not found.");
   const row: PublishAssetRow = ex
     ? { ...ex, content, updated_at: t }
     : { id: uid(), book_id: bookId, user_id: userId, kind, content, created_at: t, updated_at: t };

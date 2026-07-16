@@ -3,9 +3,12 @@ import { createBook, deleteBook, getBook, listBooks, updateBook } from "@/lib/db
 import { getBrain, upsertBrain } from "@/lib/db/repositories/brain";
 import {
   createChapter,
+  deleteChapter,
   getChapter,
   listChapters,
   reorderChapters,
+  replaceChapters,
+  updateChapter,
 } from "@/lib/db/repositories/chapters";
 import { listAssets, upsertAsset } from "@/lib/db/repositories/publish";
 
@@ -32,14 +35,14 @@ describe("books repository (memory fallback)", () => {
 
   it("updateBook persists the patch", async () => {
     const book = await createBook({ title: "Original", book_type: "novel" }, USER);
-    const updated = await updateBook(book.id, { title: "Updated" });
+    const updated = await updateBook(book.id, { title: "Updated" }, USER);
     expect(updated.title).toBe("Updated");
     expect((await getBook(book.id, USER))?.title).toBe("Updated");
   });
 
   it("deleteBook removes it from listBooks", async () => {
     const book = await createBook({ title: "Gone", book_type: "novel" }, USER);
-    await deleteBook(book.id);
+    await deleteBook(book.id, USER);
     expect(await getBook(book.id, USER)).toBeNull();
   });
 });
@@ -74,7 +77,7 @@ describe("chapters repository (memory fallback)", () => {
     const book = await createBook({ title: "Reorder", book_type: "novel" }, USER);
     const c1 = await createChapter(book.id, { title: "First" }, USER);
     const c2 = await createChapter(book.id, { title: "Second" }, USER);
-    await reorderChapters([c2.id, c1.id]);
+    await reorderChapters([c2.id, c1.id], USER);
     const listed = await listChapters(book.id, USER);
     expect(listed.map((c) => c.id)).toEqual([c2.id, c1.id]);
   });
@@ -133,5 +136,82 @@ describe("repository ownership (another user's ids are invisible)", () => {
     await upsertAsset(book.id, "description", { text: "unreleased" }, USER);
     expect(await listAssets(book.id, OTHER)).toEqual([]);
     expect(await listAssets(book.id, USER)).toHaveLength(1);
+  });
+});
+
+// The destructive half of the same IDOR: an id is not a capability. Every write
+// must prove ownership, because getDb() is service-role and nothing else will.
+describe("repository ownership (another user's ids are unwritable)", () => {
+  it("updateBook cannot rename someone else's book", async () => {
+    const book = await createBook({ title: "Mine", book_type: "novel" }, USER);
+    await expect(updateBook(book.id, { title: "defaced" }, OTHER)).rejects.toThrow();
+    expect((await getBook(book.id, USER))?.title).toBe("Mine");
+  });
+
+  it("deleteBook leaves someone else's book intact", async () => {
+    const book = await createBook({ title: "Mine", book_type: "novel" }, USER);
+    await deleteBook(book.id, OTHER);
+    expect(await getBook(book.id, USER)).not.toBeNull();
+  });
+
+  it("updateChapter cannot edit someone else's chapter", async () => {
+    const book = await createBook({ title: "Mine", book_type: "novel" }, USER);
+    const chapter = await createChapter(book.id, { title: "Draft" }, USER);
+    await expect(updateChapter(chapter.id, { content: "vandalised" }, OTHER)).rejects.toThrow();
+    expect((await getChapter(chapter.id, USER))?.title).toBe("Draft");
+  });
+
+  it("deleteChapter leaves someone else's chapter intact", async () => {
+    const book = await createBook({ title: "Mine", book_type: "novel" }, USER);
+    const chapter = await createChapter(book.id, { title: "Draft" }, USER);
+    await deleteChapter(chapter.id, OTHER);
+    expect(await getChapter(chapter.id, USER)).not.toBeNull();
+  });
+
+  it("reorderChapters cannot shuffle someone else's chapters", async () => {
+    const book = await createBook({ title: "Mine", book_type: "novel" }, USER);
+    const c1 = await createChapter(book.id, { title: "First" }, USER);
+    const c2 = await createChapter(book.id, { title: "Second" }, USER);
+    await reorderChapters([c2.id, c1.id], OTHER);
+    expect((await listChapters(book.id, USER)).map((c) => c.id)).toEqual([c1.id, c2.id]);
+  });
+
+  it("createChapter cannot add a chapter to someone else's book", async () => {
+    const book = await createBook({ title: "Mine", book_type: "novel" }, USER);
+    await expect(createChapter(book.id, { title: "Intruder" }, OTHER)).rejects.toThrow();
+    expect(await listChapters(book.id, USER)).toHaveLength(0);
+  });
+
+  it("replaceChapters cannot rewrite the outline of someone else's book", async () => {
+    const book = await createBook({ title: "Mine", book_type: "novel" }, USER);
+    await createChapter(book.id, { title: "Kept" }, USER);
+    await expect(
+      replaceChapters(
+        book.id,
+        [{ title: "Theirs", goal: "", summary: "", key_points: [], estimated_word_count: 0 }],
+        OTHER,
+      ),
+    ).rejects.toThrow();
+    expect((await listChapters(book.id, USER)).map((c) => c.title)).toEqual(["Kept"]);
+  });
+
+  // The upsert conflict target is book_id alone: unguarded, this would overwrite
+  // USER's brain *and* hand the row's user_id to OTHER, who could then read it.
+  it("upsertBrain cannot touch the brain of someone else's book", async () => {
+    const book = await createBook({ title: "Mine", book_type: "novel" }, USER);
+    await upsertBrain(book.id, { tone: "mine" }, USER);
+    await expect(upsertBrain(book.id, { tone: "stolen" }, OTHER)).rejects.toThrow();
+    expect((await getBrain(book.id, USER))?.tone).toBe("mine");
+    expect(await getBrain(book.id, OTHER)).toBeNull();
+  });
+
+  it("upsertAsset cannot touch an asset of someone else's book", async () => {
+    const book = await createBook({ title: "Mine", book_type: "novel" }, USER);
+    await upsertAsset(book.id, "description", { text: "mine" }, USER);
+    await expect(
+      upsertAsset(book.id, "description", { text: "stolen" }, OTHER),
+    ).rejects.toThrow();
+    expect((await listAssets(book.id, USER))[0].content).toEqual({ text: "mine" });
+    expect(await listAssets(book.id, OTHER)).toEqual([]);
   });
 });
