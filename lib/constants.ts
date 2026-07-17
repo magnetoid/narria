@@ -5,7 +5,8 @@ export const SITE = {
   url: process.env.NEXT_PUBLIC_SITE_URL ?? "https://narria.dotbooks.store",
 } as const;
 
-// Single implicit workspace user until real auth lands. Present on every row.
+// Owner of the shared demo workspace. Only reached when no auth is configured and
+// no per-visitor demo cookie exists (build-time prerender) — see lib/auth/session.ts.
 export const DEV_USER_ID = "00000000-0000-0000-0000-000000000001";
 
 // ── Book types ───────────────────────────────────────────────────────────────
@@ -66,6 +67,41 @@ export type AgentName =
   | "researchAssistant"
   | "factCheck"
   | "metadata";
+
+// ── Rate limits ──────────────────────────────────────────────────────────────
+/** Ceilings on the NUMBER of paid model calls, enforced in the `ai` facade (see
+ *  lib/rate-limit.ts). Tunable: these are cost guards, not product rules — raise them
+ *  if legitimate writing hits the ceiling. The facade skips this enforcement entirely
+ *  when the resolved provider is the mock (lib/ai/index.ts: enforceCallBudget) — with
+ *  no ANTHROPIC_API_KEY there is nothing to guard the cost of, and the zero-setup demo
+ *  must not be throttled for a bill it will never receive.
+ *
+ *  These meter call count only. Per-call cost is bounded separately, by truncation
+ *  where text enters a prompt (lib/ai/prompts.ts: brainContext, chapter content,
+ *  currentText) — because every input is caller-written and none of it is otherwise
+ *  bounded. Tune the two together: multiplying a ceiling here multiplies the bill by
+ *  the per-call cost the prompt caps allow, INPUT included. Reasoning from max_tokens
+ *  alone understates it by an order of magnitude — the system prompt carries the Book
+ *  Brain on every call, and it is saved by an unmetered non-AI action.
+ *
+ *  `concurrentStreams` exists because the per-minute counter cannot see a few
+ *  long-lived streams each burning tokens for minutes on one call apiece.
+ *
+ *  The `demo*` pair is a ceiling across ALL demo callers at once, not per caller.
+ *  A demo identity is a cookie the visitor carries and the proxy will mint on
+ *  demand (lib/auth/session.ts, proxy.ts), so the per-caller limits above are only
+ *  a fairness control there: rotating the cookie buys a fresh per-caller budget.
+ *  These two are keyed on a name the server chose, so they are what bounds the demo's
+ *  call volume when a deployment has an ANTHROPIC_API_KEY and no Supabase auth — a
+ *  public, login-less endpoint on a real key. The tradeoff is deliberate: an abuser
+ *  can exhaust the shared demo budget and leave honest visitors throttled, which is
+ *  the cheaper failure of the two. */
+export const RATE_LIMITS = {
+  aiCallsPerMinute: 10,
+  concurrentStreams: 4,
+  demoCallsPerMinute: 60,
+  demoConcurrentStreams: 12,
+} as const;
 
 // ── Chapter workspace AI actions ─────────────────────────────────────────────
 export type AiActionGroup = "write" | "transform" | "review";

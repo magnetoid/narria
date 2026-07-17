@@ -46,7 +46,12 @@ export function AiPanel({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ bookId, chapterId, currentText }),
         });
-        if (!res.ok || !res.body) throw new Error("Generation failed.");
+        if (!res.ok || !res.body) {
+          // The route answers a throttle with 429 and a plain-text reason. Showing
+          // "Generation failed." instead would invite an immediate retry into the
+          // very limit that just rejected this one.
+          throw new Error((await res.text().catch(() => "")) || "Generation failed.");
+        }
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         for (;;) {

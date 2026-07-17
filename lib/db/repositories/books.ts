@@ -1,6 +1,6 @@
 import "server-only";
 import { getDb } from "@/lib/db/client";
-import { DEV_USER_ID } from "@/lib/constants";
+import { getSessionUser, requireUserId } from "@/lib/auth/session";
 import type { Book, NewBookInput } from "@/lib/db/types";
 import {
   memCreateBook,
@@ -10,8 +10,10 @@ import {
   memUpdateBook,
 } from "@/lib/db/memory-store";
 
-export async function listBooks(userId: string = DEV_USER_ID): Promise<Book[]> {
-  const db = getDb();
+export async function listBooks(userId?: string): Promise<Book[]> {
+  userId ??= (await getSessionUser())?.id;
+  if (!userId) return [];
+  const db = await getDb();
   if (!db) return memListBooks(userId);
   const { data, error } = await db
     .from("books")
@@ -25,10 +27,17 @@ export async function listBooks(userId: string = DEV_USER_ID): Promise<Book[]> {
   return (data ?? []) as Book[];
 }
 
-export async function getBook(id: string): Promise<Book | null> {
-  const db = getDb();
-  if (!db) return memGetBook(id);
-  const { data, error } = await db.from("books").select("*").eq("id", id).maybeSingle();
+export async function getBook(id: string, userId?: string): Promise<Book | null> {
+  userId ??= (await getSessionUser())?.id;
+  if (!userId) return null;
+  const db = await getDb();
+  if (!db) return memGetBook(id, userId);
+  const { data, error } = await db
+    .from("books")
+    .select("*")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .maybeSingle();
   if (error) {
     console.error("getBook", error.message);
     return null;
@@ -38,9 +47,10 @@ export async function getBook(id: string): Promise<Book | null> {
 
 export async function createBook(
   input: NewBookInput,
-  userId: string = DEV_USER_ID,
+  userId?: string,
 ): Promise<Book> {
-  const db = getDb();
+  userId ??= await requireUserId();
+  const db = await getDb();
   if (!db) return memCreateBook(input, userId);
   const { data, error } = await db
     .from("books")
@@ -60,22 +70,34 @@ export async function createBook(
 export async function updateBook(
   id: string,
   patch: Partial<Pick<Book, "title" | "subtitle" | "book_type" | "status" | "cover_emoji">>,
+  userId?: string,
 ): Promise<Book> {
-  const db = getDb();
-  if (!db) return memUpdateBook(id, patch);
+  userId ??= await requireUserId();
+  const db = await getDb();
+  if (!db) return memUpdateBook(id, patch, userId);
   const { data, error } = await db
     .from("books")
     .update(patch)
     .eq("id", id)
+    .eq("user_id", userId)
     .select("*")
     .single();
   if (error) throw new Error(error.message);
   return data as Book;
 }
 
-export async function deleteBook(id: string): Promise<void> {
-  const db = getDb();
-  if (!db) return memDeleteBook(id);
-  const { error } = await db.from("books").delete().eq("id", id);
+export async function deleteBook(id: string, userId?: string): Promise<void> {
+  userId ??= await requireUserId();
+  const db = await getDb();
+  if (!db) return memDeleteBook(id, userId);
+  const { error } = await db.from("books").delete().eq("id", id).eq("user_id", userId);
   if (error) throw new Error(error.message);
+}
+
+/** Guard for any write keyed on a bookId that came from the request. Knowing an id
+ *  is not proof of owning it, so without this the write would land on whoever's book
+ *  the id happens to name. RLS refuses that write too, but only where RLS is on:
+ *  this also holds for the memory store and for a pre-auth service-role deploy. */
+export async function assertOwnsBook(bookId: string, userId: string): Promise<void> {
+  if (!(await getBook(bookId, userId))) throw new Error("Book not found.");
 }

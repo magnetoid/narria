@@ -1,0 +1,86 @@
+import "server-only";
+import { cache } from "react";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { DEMO_UID_COOKIE, isAuthConfigured } from "@/lib/auth/config";
+import { createAuthClient } from "@/lib/auth/supabase";
+import { isDbConfigured } from "@/lib/db/client";
+import { DEV_USER_ID } from "@/lib/constants";
+
+export interface SessionUser {
+  id: string;
+  email: string | null;
+  /** True when the app runs unconfigured: an ephemeral workspace, not an account. */
+  isDemo: boolean;
+}
+
+/**
+ * THE identity seam. This is the only place in the app that knows whether real
+ * auth is configured — everything else just asks who the user is. Keeping the
+ * branch here is what lets the zero-setup demo and a real SaaS share one codebase.
+ *
+ * Returns null only in real mode when signed out. Demo mode always resolves, so
+ * an unconfigured deployment never sees a login.
+ */
+export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
+  if (!isAuthConfigured()) {
+    // isDbConfigured() also accepts URL + service-role alone, so the two predicates
+    // can disagree. Demo identity is an unsigned cookie the client sends us: safe
+    // only while the ephemeral memory store is what it addresses. Behind a durable
+    // service-role store (which bypasses RLS by design) that same cookie would be
+    // the sole tenancy check on every tenant's rows, with no way to sign in and
+    // nothing to gate it. Refuse to serve rather than silently drop to no auth.
+    if (isDbConfigured()) {
+      throw new Error(
+        "Supabase is configured for storage but not for sign-in: add NEXT_PUBLIC_SUPABASE_ANON_KEY " +
+          "to enable authentication, or unset NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY " +
+          "to run the zero-setup demo.",
+      );
+    }
+
+    const store = await cookies();
+    // The proxy mints this per visitor. It is absent during build-time prerender,
+    // where DEV_USER_ID keeps the shared workspace readable.
+    const id = store.get(DEMO_UID_COOKIE)?.value || DEV_USER_ID;
+    return { id, email: null, isDemo: true };
+  }
+
+  // Auth is configured, so every request past this point can trigger an AI
+  // generation, and logGeneration() (lib/db/repositories/generations.ts) writes
+  // ai_generations through getAdminDb() — RLS grants a user SELECT only there, by
+  // design, so the service-role client is the only one that may insert. Without
+  // the key, getAdminDb() returns null and logGeneration() no-ops silently: usage
+  // (and the token/cost/credit accounting billing depends on) stops being metered
+  // with no error anywhere. That is worse than refusing to serve, so this refuses
+  // here — the same seam that already refuses URL + service-role with no anon key.
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error(
+      "Supabase Auth is configured but SUPABASE_SERVICE_ROLE_KEY is not set: AI usage can only be " +
+        "logged (and billed) through the service-role client, so add SUPABASE_SERVICE_ROLE_KEY, or " +
+        "unset NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to run the zero-setup demo.",
+    );
+  }
+
+  const supabase = await createAuthClient();
+  // getUser() revalidates the JWT with Supabase. getSession() only decodes the
+  // cookie, which the client controls, so it must never gate access on its own.
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) return null;
+  return { id: data.user.id, email: data.user.email ?? null, isDemo: false };
+});
+
+/** Page-level guard: resolves in demo mode, redirects to /login when signed out. */
+export async function requireUser(): Promise<SessionUser> {
+  const user = await getSessionUser();
+  if (!user) redirect("/login");
+  return user;
+}
+
+/** Owner for a write. Throws rather than redirecting: server actions catch errors
+ *  into `{ error }`, and a redirect thrown here would be swallowed by that catch.
+ *  A write must never fall back to a shared id, so there is no default. */
+export async function requireUserId(): Promise<string> {
+  const user = await getSessionUser();
+  if (!user) throw new Error("Sign in to save your work.");
+  return user.id;
+}

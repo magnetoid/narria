@@ -6,13 +6,20 @@ import { listChapters } from "@/lib/db/repositories/chapters";
 import { upsertAsset } from "@/lib/db/repositories/publish";
 import { generateAsset } from "@/lib/ai/agents/metadata";
 import type { PublishAssetKind } from "@/lib/constants";
+import { errorCode, type ActionError } from "@/lib/errors";
+import { assetContent as assetContentSchema, idSchema, publishAssetKind } from "@/lib/validation";
 
 type AssetContent = { text?: string; items?: string[] };
 
 export async function generateAssetAction(
   bookId: string,
   kind: PublishAssetKind,
-): Promise<{ content: AssetContent } | { error: string }> {
+): Promise<{ content: AssetContent } | ActionError> {
+  const parsedId = idSchema.safeParse(bookId);
+  const parsedKind = publishAssetKind.safeParse(kind);
+  if (!parsedId.success || !parsedKind.success) return { error: "Invalid asset request." };
+  // idSchema trims — use the parsed id everywhere so reads and writes share one key.
+  bookId = parsedId.data;
   const book = await getBook(bookId);
   if (!book) return { error: "Book not found." };
   const brain = await getBrain(bookId);
@@ -22,7 +29,7 @@ export async function generateAssetAction(
     const row = await upsertAsset(bookId, kind, content);
     return { content: row.content };
   } catch (e) {
-    return { error: (e as Error).message };
+    return { error: (e as Error).message, code: errorCode(e) };
   }
 }
 
@@ -31,8 +38,14 @@ export async function saveAssetAction(
   kind: PublishAssetKind,
   content: AssetContent,
 ): Promise<{ ok: true } | { error: string }> {
+  const parsedId = idSchema.safeParse(bookId);
+  const parsedKind = publishAssetKind.safeParse(kind);
+  const parsedContent = assetContentSchema.safeParse(content);
+  if (!parsedId.success || !parsedKind.success || !parsedContent.success) {
+    return { error: "Invalid asset content." };
+  }
   try {
-    await upsertAsset(bookId, kind, content);
+    await upsertAsset(parsedId.data, kind, parsedContent.data);
     return { ok: true };
   } catch (e) {
     return { error: (e as Error).message };

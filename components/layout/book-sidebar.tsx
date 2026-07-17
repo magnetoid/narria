@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
@@ -9,7 +10,9 @@ import { BOOK_NAV, getBookType } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import type { Book } from "@/lib/db/types";
 
-export function BookSidebar({ book }: { book: Book }) {
+/** `userMenu` is passed in as a node because this shell is a client component and
+ *  the menu resolves the session on the server. */
+export function BookSidebar({ book, userMenu }: { book: Book; userMenu?: ReactNode }) {
   const pathname = usePathname();
   const type = getBookType(book.book_type);
 
@@ -61,6 +64,9 @@ export function BookSidebar({ book }: { book: Book }) {
             </Link>
           ))}
         </nav>
+        {userMenu ? (
+          <div className="border-t border-line/70 p-3">{userMenu}</div>
+        ) : null}
       </aside>
 
       {/* Mobile top nav */}

@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { getBook, updateBook } from "@/lib/db/repositories/books";
 import { upsertBrain } from "@/lib/db/repositories/brain";
 import { synthesizeBrain } from "@/lib/ai/agents/bookPlanner";
+import { errorCode, type ActionError } from "@/lib/errors";
+import { idSchema, interviewEntries as interviewEntriesSchema } from "@/lib/validation";
 
 export interface InterviewEntry {
   id: string;
@@ -17,9 +19,13 @@ export async function saveInterview(
   bookId: string,
   entries: InterviewEntry[],
 ): Promise<void> {
-  const interview = Object.fromEntries(entries.map((e) => [e.id, e.answer]));
+  const parsedId = idSchema.safeParse(bookId);
+  const parsedEntries = interviewEntriesSchema.safeParse(entries);
+  if (!parsedId.success || !parsedEntries.success) return; // best-effort; silently skip
+
+  const interview = Object.fromEntries(parsedEntries.data.map((e) => [e.id, e.answer]));
   try {
-    await upsertBrain(bookId, { interview });
+    await upsertBrain(parsedId.data, { interview });
   } catch {
     // best-effort; the final synthesis re-saves everything
   }
@@ -30,12 +36,18 @@ export async function saveInterview(
 export async function finishInterview(
   bookId: string,
   entries: InterviewEntry[],
-): Promise<{ error: string } | void> {
+): Promise<ActionError | void> {
+  const parsedId = idSchema.safeParse(bookId);
+  const parsedEntries = interviewEntriesSchema.safeParse(entries);
+  if (!parsedId.success || !parsedEntries.success) return { error: "Invalid interview answers." };
+  // idSchema trims — use the parsed id everywhere so reads and writes share one key.
+  bookId = parsedId.data;
+
   const book = await getBook(bookId);
   if (!book) return { error: "Book not found." };
 
-  const qa = entries.map((e) => ({ question: e.question, answer: e.answer }));
-  const interview = Object.fromEntries(entries.map((e) => [e.id, e.answer]));
+  const qa = parsedEntries.data.map((e) => ({ question: e.question, answer: e.answer }));
+  const interview = Object.fromEntries(parsedEntries.data.map((e) => [e.id, e.answer]));
 
   try {
     const synth = await synthesizeBrain(book, qa);
@@ -53,7 +65,7 @@ export async function finishInterview(
     });
     await updateBook(bookId, { status: "outlining" });
   } catch (e) {
-    return { error: (e as Error).message };
+    return { error: (e as Error).message, code: errorCode(e) };
   }
 
   revalidatePath(`/books/${bookId}`, "layout");
