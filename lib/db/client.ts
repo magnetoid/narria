@@ -29,11 +29,13 @@ const getUserDb = cache(async (): Promise<SupabaseClient> => createAuthClient())
  *  never hoisted into a module variable. */
 export async function getDb(): Promise<SupabaseClient | null> {
   if (isAuthConfigured()) return getUserDb();
-  // No anon key: either nothing is configured (null → memory store) or this is a
-  // pre-auth single-user deploy on URL + service role, which predates RLS and still
-  // expects the client that bypasses it. getSessionUser() is what refuses to serve
-  // the latter; keeping the branch here means storage config alone decides nothing.
-  return getAdminDb();
+  // No anon key ⇒ no sign-in. getSessionUser() already refuses the one config
+  // where that would be ambiguous (URL + service-role, no anon key) before any
+  // repository can reach this function — every repository resolves identity
+  // through getSessionUser() first, so a call that would want the service-role
+  // client here has already thrown. Nothing configured is the only way to arrive,
+  // and that means the memory store.
+  return null;
 }
 
 /** Service-role client: bypasses RLS, belongs to no user, module-cached because it
