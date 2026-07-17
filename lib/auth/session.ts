@@ -45,6 +45,22 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
     return { id, email: null, isDemo: true };
   }
 
+  // Auth is configured, so every request past this point can trigger an AI
+  // generation, and logGeneration() (lib/db/repositories/generations.ts) writes
+  // ai_generations through getAdminDb() — RLS grants a user SELECT only there, by
+  // design, so the service-role client is the only one that may insert. Without
+  // the key, getAdminDb() returns null and logGeneration() no-ops silently: usage
+  // (and the token/cost/credit accounting billing depends on) stops being metered
+  // with no error anywhere. That is worse than refusing to serve, so this refuses
+  // here — the same seam that already refuses URL + service-role with no anon key.
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error(
+      "Supabase Auth is configured but SUPABASE_SERVICE_ROLE_KEY is not set: AI usage can only be " +
+        "logged (and billed) through the service-role client, so add SUPABASE_SERVICE_ROLE_KEY, or " +
+        "unset NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to run the zero-setup demo.",
+    );
+  }
+
   const supabase = await createAuthClient();
   // getUser() revalidates the JWT with Supabase. getSession() only decodes the
   // cookie, which the client controls, so it must never gate access on its own.

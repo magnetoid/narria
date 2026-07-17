@@ -89,13 +89,42 @@ describe("getSessionUser (durable store configured, sign-in not)", () => {
   });
 });
 
-// The zero-setup invariant: with no env at all both predicates are false, so the
-// guard above must stay out of the way.
+// Auth configured (URL + anon key) but no service-role key: logGeneration() can
+// only insert ai_generations through the service-role client (RLS grants a user
+// SELECT only there), so without the key usage/billing silently stops being
+// metered. Refuse rather than let that degrade quietly.
+describe("getSessionUser (auth configured, service-role key missing)", () => {
+  beforeEach(() => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://project.supabase.co");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon-key");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "");
+  });
+
+  it("refuses to serve rather than silently no-op billing", async () => {
+    await expect(getSessionUser()).rejects.toThrow(/SUPABASE_SERVICE_ROLE_KEY/);
+  });
+
+  it("refuses for writes too, so no generation goes unmetered", async () => {
+    const mod = await import("@/lib/auth/session");
+    await expect(mod.requireUserId()).rejects.toThrow(/SUPABASE_SERVICE_ROLE_KEY/);
+  });
+});
+
+// The zero-setup invariant: with no env at all every predicate above is false, so
+// neither guard fires — demo mode is unconfigured auth's only outcome.
 describe("getSessionUser (no env at all)", () => {
-  it("still resolves to a demo user with the memory store behind it", async () => {
+  beforeEach(() => {
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "");
     vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "");
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "");
+  });
+
+  it("still resolves to a demo user with the memory store behind it", async () => {
     await expect(getSessionUser()).resolves.toMatchObject({ isDemo: true });
+  });
+
+  it("still resolves a demo user id for writes, so nothing throws at boot", async () => {
+    const mod = await import("@/lib/auth/session");
+    await expect(mod.requireUserId()).resolves.toEqual(expect.any(String));
   });
 });
