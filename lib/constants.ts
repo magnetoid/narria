@@ -69,9 +69,17 @@ export type AgentName =
   | "metadata";
 
 // ── Rate limits ──────────────────────────────────────────────────────────────
-/** Ceilings on paid model calls, enforced in the `ai` facade (see lib/rate-limit.ts).
- *  Tunable: these are cost guards, not product rules — raise them if legitimate
- *  writing hits the ceiling.
+/** Ceilings on the NUMBER of paid model calls, enforced in the `ai` facade (see
+ *  lib/rate-limit.ts). Tunable: these are cost guards, not product rules — raise them
+ *  if legitimate writing hits the ceiling.
+ *
+ *  These meter call count only. Per-call cost is bounded separately, by truncation
+ *  where text enters a prompt (lib/ai/prompts.ts: brainContext, chapter content,
+ *  currentText) — because every input is caller-written and none of it is otherwise
+ *  bounded. Tune the two together: multiplying a ceiling here multiplies the bill by
+ *  the per-call cost the prompt caps allow, INPUT included. Reasoning from max_tokens
+ *  alone understates it by an order of magnitude — the system prompt carries the Book
+ *  Brain on every call, and it is saved by an unmetered non-AI action.
  *
  *  `concurrentStreams` exists because the per-minute counter cannot see a few
  *  long-lived streams each burning tokens for minutes on one call apiece.
@@ -80,8 +88,8 @@ export type AgentName =
  *  A demo identity is a cookie the visitor carries and the proxy will mint on
  *  demand (lib/auth/session.ts, proxy.ts), so the per-caller limits above are only
  *  a fairness control there: rotating the cookie buys a fresh per-caller budget.
- *  These two are keyed on a name the server chose, so they are what actually bounds
- *  the bill when a deployment has an ANTHROPIC_API_KEY and no Supabase auth — a
+ *  These two are keyed on a name the server chose, so they are what bounds the demo's
+ *  call volume when a deployment has an ANTHROPIC_API_KEY and no Supabase auth — a
  *  public, login-less endpoint on a real key. The tradeoff is deliberate: an abuser
  *  can exhaust the shared demo budget and leave honest visitors throttled, which is
  *  the cheaper failure of the two. */

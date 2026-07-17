@@ -20,7 +20,16 @@ function line(label: string, value: string | null | undefined): string {
   return value ? `${label}: ${value}\n` : "";
 }
 
-/** Compact, binding context block fed to every agent. */
+/** Compact, binding context block fed to every agent.
+ *
+ *  The cap is a cost guard, not a formatting choice. The brain is caller-written and
+ *  `brainPatch` bounds each field but not their sum (~552k chars is schema-valid), and
+ *  this block rides the SYSTEM prompt of every agent on every call — so without it one
+ *  saved brain sets the price of every later call on that book. RATE_LIMITS bounds how
+ *  many calls; this bounds what a call costs. Capping here rather than at each call site
+ *  bounds all agents at once. Truncation drops the tail (research notes, characters
+ *  last), which is the intended trade: a brain that long is not being read closely by
+ *  the model anyway. */
 export function brainContext(book: Book, brain: BookBrain | null): string {
   const type = getBookType(book.book_type);
   let out = `BOOK BRAIN\n`;
@@ -43,7 +52,7 @@ export function brainContext(book: Book, brain: BookBrain | null): string {
         .join("\n")}\n`;
     }
   }
-  return out.trim();
+  return out.trim().slice(0, 8000);
 }
 
 // ── Book Planner ────────────────────────────────────────────────────────────────

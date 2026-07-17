@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { brainContext, buildEdit } from "@/lib/ai/prompts";
+import { brainContext, buildContinue, buildEdit } from "@/lib/ai/prompts";
 import { CHAPTER_AI_ACTIONS } from "@/lib/constants";
+import { brainPatch } from "@/lib/validation";
 import type { Book, BookBrain, Chapter } from "@/lib/db/types";
 
 const book = (overrides: Partial<Book> = {}): Book => ({
@@ -90,6 +91,81 @@ describe("brainContext", () => {
     const ctx = brainContext(book(), null);
     expect(ctx).toContain("Title: The Long Way Home");
     expect(ctx).not.toContain("Audience:");
+  });
+});
+
+describe("brainContext cost bound", () => {
+  // The Book Brain is attacker-writable through saveBrain, which is not an AI action
+  // and so spends none of the rate limiter's budget. brainPatch caps each field but
+  // not their sum, so a schema-valid brain is worth ~552k characters — and it rides
+  // the SYSTEM prompt of every agent on every call. The rate limiter meters call
+  // count; only this cap meters what a call costs.
+  const maximalBrain = (): BookBrain =>
+    brain({
+      audience: "a".repeat(2000),
+      tone: "a".repeat(2000),
+      writing_style: "a".repeat(2000),
+      author_background: "a".repeat(2000),
+      author_goals: "a".repeat(2000),
+      reader_takeaway: "a".repeat(2000),
+      key_ideas: Array.from({ length: 100 }, () => "b".repeat(500)),
+      style_rules: Array.from({ length: 100 }, () => "c".repeat(500)),
+      characters: Array.from({ length: 100 }, () => ({
+        name: "n".repeat(200),
+        role: "r".repeat(200),
+        description: "d".repeat(2000),
+      })),
+      research_notes: Array.from({ length: 200 }, () => "e".repeat(1000)),
+    });
+
+  it("is a brain the validation schema actually accepts", () => {
+    // Guards the premise: if brainPatch tightened, this stops being an attack and
+    // the cap below stops being load-bearing — better to learn that here.
+    const b = maximalBrain();
+    const parsed = brainPatch.safeParse({
+      audience: b.audience,
+      tone: b.tone,
+      writing_style: b.writing_style,
+      author_background: b.author_background,
+      author_goals: b.author_goals,
+      reader_takeaway: b.reader_takeaway,
+      key_ideas: b.key_ideas,
+      style_rules: b.style_rules,
+      characters: b.characters,
+      research_notes: b.research_notes,
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("caps the aggregate a maximal brain contributes to a prompt", () => {
+    const raw = maximalBrain();
+    const uncappedSize =
+      (raw.research_notes?.length ?? 0) * 1000 + (raw.characters?.length ?? 0) * 2400;
+    expect(uncappedSize).toBeGreaterThan(400_000);
+
+    expect(brainContext(book(), raw).length).toBeLessThanOrEqual(8000);
+  });
+
+  it("bounds the system prompt of an agent reached from the AI route", () => {
+    // app/api/ai/continue/route.ts -> continueChapter -> buildContinue. The prompt
+    // side already truncates (currentText.slice(-4000)); the system side is where
+    // the brain lands.
+    const built = buildContinue(book(), maximalBrain(), chapter(), "Some prose.");
+    expect(built.system.length).toBeLessThan(10_000);
+  });
+
+  it("leaves a realistic brain untouched", () => {
+    const ctx = brainContext(
+      book(),
+      brain({
+        audience: "Busy parents",
+        key_ideas: ["Start small", "Show up daily"],
+        research_notes: ["Check the 1998 census figures"],
+      }),
+    );
+    expect(ctx).toContain("Busy parents");
+    expect(ctx).toContain("Check the 1998 census figures");
+    expect(ctx.length).toBeLessThan(8000);
   });
 });
 
