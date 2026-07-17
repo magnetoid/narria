@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  __resetMemoryStore,
   memCreateBook,
   memCreateChapter,
   memDeleteBook,
   memGetBook,
   memGetBrain,
   memListAssets,
+  memListBooks,
   memListChapters,
   memReorderChapters,
   memUpdateBook,
@@ -17,10 +19,12 @@ const USER = "user_1";
 const OTHER = "user_2";
 
 // The store backs its maps on globalThis (see memory-store.ts) so every route
-// in the process shares one instance — clear it between tests for isolation.
+// in the process shares one instance — `__resetMemoryStore()` clears the Maps
+// in place between tests for isolation (a plain `delete globalThis.__narriaMem`
+// does NOT work here: this module destructured the Maps out of `state` at load
+// time, so it would keep the same, now-detached-from-global Maps forever).
 beforeEach(() => {
-  const g = globalThis as unknown as { __narriaMem?: unknown };
-  delete g.__narriaMem;
+  __resetMemoryStore();
 });
 
 describe("memory-store books", () => {
@@ -121,6 +125,28 @@ describe("memory-store chapter reorder", () => {
 
   it("ignores unknown ids without throwing", () => {
     expect(() => memReorderChapters(["nonexistent"], USER)).not.toThrow();
+  });
+});
+
+// RED-first regression: `delete globalThis.__narriaMem` in the beforeEach above
+// looks like a reset but the module already destructured `books` etc. out of
+// `state` at load time, so it keeps the same Map forever. By this point in the
+// file several earlier tests have created books for USER and never deleted
+// them, so under the broken reset this sees every leftover instead of a clean
+// store — exactly the leak that made an unrelated ownership test see 8 books
+// instead of 1.
+describe("memory-store reset actually isolates tests", () => {
+  it("does not leak books created by earlier tests in this file", () => {
+    expect(memListBooks(USER)).toHaveLength(0);
+  });
+
+  it("__resetMemoryStore empties a store that was just seeded", () => {
+    memCreateBook({ title: "Seeded", book_type: "novel" }, USER);
+    expect(memListBooks(USER)).toHaveLength(1);
+
+    __resetMemoryStore();
+
+    expect(memListBooks(USER)).toHaveLength(0);
   });
 });
 

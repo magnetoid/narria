@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { __resetMemoryStore } from "@/lib/db/memory-store";
 import { createBook, deleteBook, getBook, listBooks, updateBook } from "@/lib/db/repositories/books";
 import { getBrain, upsertBrain } from "@/lib/db/repositories/brain";
 import {
@@ -16,10 +17,11 @@ const USER = "user_1";
 const OTHER = "user_2";
 
 // No Supabase env is set anywhere in this suite (see vitest.config.ts / CI), so
-// getDb() returns null and every repository call must fall back to the memory store.
+// getDb() returns null and every repository call must fall back to the memory
+// store. `__resetMemoryStore()` clears it in place between tests — a plain
+// `delete globalThis.__narriaMem` looks like a reset but isn't (see memory-store.ts).
 beforeEach(() => {
-  const g = globalThis as unknown as { __narriaMem?: unknown };
-  delete g.__narriaMem;
+  __resetMemoryStore();
 });
 
 describe("books repository (memory fallback)", () => {

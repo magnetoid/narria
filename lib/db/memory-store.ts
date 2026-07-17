@@ -36,10 +36,25 @@ const state: MemState =
     chapters: new Map(),
     assets: new Map(),
   });
+// Destructured once, at module load: every reference to `books`/`brains`/etc.
+// below is the *same* Map for the lifetime of this module instance. A test
+// doing `delete globalThis.__narriaMem` only detaches the global — these Maps
+// are untouched by that, so it is not a reset. Use `__resetMemoryStore()`
+// below, which clears the Maps in place, to actually empty the store.
 const { books, brains, chapters, assets } = state;
 
 const uid = () => `mem_${(state.seq++).toString(36)}${Date.now().toString(36)}`;
 const now = () => new Date().toISOString();
+
+/** Test-only: empties the shared store in place (see the destructuring note
+ *  above for why reassigning or deleting `globalThis.__narriaMem` doesn't). */
+export function __resetMemoryStore(): void {
+  state.seq = 1;
+  books.clear();
+  brains.clear();
+  chapters.clear();
+  assets.clear();
+}
 
 // ── books ──
 export function memListBooks(userId: string): Book[] {
