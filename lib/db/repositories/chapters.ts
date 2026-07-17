@@ -16,7 +16,7 @@ import {
 export async function listChapters(bookId: string, userId?: string): Promise<Chapter[]> {
   userId ??= (await getSessionUser())?.id;
   if (!userId) return [];
-  const db = getDb();
+  const db = await getDb();
   if (!db) return memListChapters(bookId, userId);
   const { data, error } = await db
     .from("chapters")
@@ -34,7 +34,7 @@ export async function listChapters(bookId: string, userId?: string): Promise<Cha
 export async function getChapter(id: string, userId?: string): Promise<Chapter | null> {
   userId ??= (await getSessionUser())?.id;
   if (!userId) return null;
-  const db = getDb();
+  const db = await getDb();
   if (!db) return memGetChapter(id, userId);
   const { data, error } = await db
     .from("chapters")
@@ -56,7 +56,7 @@ export async function createChapter(
 ): Promise<Chapter> {
   userId ??= await requireUserId();
   await assertOwnsBook(bookId, userId);
-  const db = getDb();
+  const db = await getDb();
   if (!db) return memCreateChapter(bookId, input, userId);
   const existing = await listChapters(bookId, userId);
   const { data, error } = await db
@@ -87,7 +87,7 @@ export async function replaceChapters(
 ): Promise<Chapter[]> {
   userId ??= await requireUserId();
   await assertOwnsBook(bookId, userId);
-  const db = getDb();
+  const db = await getDb();
   if (!db) return memReplaceChapters(bookId, plans, userId);
   // Scoped to the owner: the rows are re-inserted as `userId`, so the delete must
   // not be able to clear a different owner's chapters for the same book id.
@@ -117,7 +117,7 @@ export async function updateChapter(
   userId?: string,
 ): Promise<Chapter> {
   userId ??= await requireUserId();
-  const db = getDb();
+  const db = await getDb();
   if (!db) return memUpdateChapter(id, patch, userId);
   const { data, error } = await db
     .from("chapters")
@@ -132,7 +132,7 @@ export async function updateChapter(
 
 export async function deleteChapter(id: string, userId?: string): Promise<void> {
   userId ??= await requireUserId();
-  const db = getDb();
+  const db = await getDb();
   if (!db) return memDeleteChapter(id, userId);
   const { error } = await db.from("chapters").delete().eq("id", id).eq("user_id", userId);
   if (error) throw new Error(error.message);
@@ -141,7 +141,7 @@ export async function deleteChapter(id: string, userId?: string): Promise<void> 
 /** Persist a new ordering. `orderedIds` is the desired top-to-bottom order. */
 export async function reorderChapters(orderedIds: string[], userId?: string): Promise<void> {
   userId ??= await requireUserId();
-  const db = getDb();
+  const db = await getDb();
   if (!db) return memReorderChapters(orderedIds, userId);
   await Promise.all(
     orderedIds.map((id, index) =>

@@ -12,7 +12,7 @@ export type BrainPatch = Partial<
 export async function getBrain(bookId: string, userId?: string): Promise<BookBrain | null> {
   userId ??= (await getSessionUser())?.id;
   if (!userId) return null;
-  const db = getDb();
+  const db = await getDb();
   if (!db) return memGetBrain(bookId, userId);
   const { data, error } = await db
     .from("book_brain")
@@ -38,7 +38,7 @@ export async function upsertBrain(
   // new row — it would overwrite the owner's brain and reassign user_id to the
   // caller, who could then read it through getBrain's owner filter.
   await assertOwnsBook(bookId, userId);
-  const db = getDb();
+  const db = await getDb();
   if (!db) return memUpsertBrain(bookId, patch, userId);
   const { data, error } = await db
     .from("book_brain")

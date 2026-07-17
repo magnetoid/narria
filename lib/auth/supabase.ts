@@ -4,7 +4,8 @@ import type { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-/** Request-scoped Supabase Auth client (anon key — subject to RLS, unlike getDb()).
+/** Request-scoped Supabase client on the anon key: it carries the caller's JWT, so
+ *  every query it runs is subject to RLS. Backs both the auth routes and getDb().
  *
  *  Callers must check isAuthConfigured() first; this asserts the env is present.
  *  Never cache the result across requests — it is bound to one request's cookies.

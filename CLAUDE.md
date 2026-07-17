@@ -60,16 +60,23 @@ Model selection is per-agent and env-overridable via `modelFor()`: `NARRIA_MODEL
 ### Data (`lib/db/`)
 
 UI and actions touch **repositories only** ([lib/db/repositories/](lib/db/repositories/)) — never
-`getDb()` directly. Each repository function checks `getDb()` and delegates to the `mem*` equivalent
-when it returns null. Adding a repository function means adding both halves.
+`getDb()` directly. Each repository function checks `await getDb()` and delegates to the `mem*`
+equivalent when it returns null. Adding a repository function means adding both halves.
 
-- `getDb()` returns null when unconfigured; `requireDb()` throws a user-facing message — use it only
-  for mutations that genuinely cannot degrade.
-- The Supabase client uses the **service role key and bypasses RLS**. There is no auth yet: every row
-  carries `DEV_USER_ID` (`lib/constants.ts`), a single implicit workspace user.
-- Schema lives in [supabase/migrations/0001_init.sql](supabase/migrations/0001_init.sql); run it by
-  hand in the SQL editor. Row shapes are mirrored in [lib/db/types.ts](lib/db/types.ts) — keep the two
-  in sync manually (no codegen).
+- `getDb()` is **async and per-request**: it returns null when unconfigured, and otherwise a client
+  carrying the caller's JWT, so Postgres enforces RLS. `requireDb()` throws a user-facing message —
+  use it only for mutations that genuinely cannot degrade. Never hoist either into a module variable:
+  the client belongs to one user. **Always `await` it** — a forgotten `await` still type-checks
+  (a Promise is truthy), silently skips the `mem*` fallback, and breaks zero-setup at runtime only.
+- `getAdminDb()` is the service-role client and **bypasses RLS**. Only `logGeneration()` may use it
+  (an audit row must survive an expired token and must not be forgeable). It is not a shortcut around
+  a policy that is in your way.
+- Repositories keep explicit `.eq("user_id", …)` filters and `assertOwnsBook()` guards even though RLS
+  now backs them: the memory store has no RLS, so those guards are the only tenancy check there.
+- Schema lives in [supabase/migrations/](supabase/migrations/); run each by hand in the SQL editor, in
+  order. `0003_rls.sql` has a claim-rows step in its header — pre-auth rows carry `DEV_USER_ID`
+  (`lib/constants.ts`) and go invisible once RLS is on. Row shapes are mirrored in
+  [lib/db/types.ts](lib/db/types.ts) — keep the two in sync manually (no codegen).
 - The memory store backs its maps on `globalThis` because Next production builds can hand each route
   its own module instance, which would otherwise split state across pages, actions, and API routes.
 

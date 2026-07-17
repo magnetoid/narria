@@ -13,7 +13,7 @@ import {
 export async function listBooks(userId?: string): Promise<Book[]> {
   userId ??= (await getSessionUser())?.id;
   if (!userId) return [];
-  const db = getDb();
+  const db = await getDb();
   if (!db) return memListBooks(userId);
   const { data, error } = await db
     .from("books")
@@ -30,7 +30,7 @@ export async function listBooks(userId?: string): Promise<Book[]> {
 export async function getBook(id: string, userId?: string): Promise<Book | null> {
   userId ??= (await getSessionUser())?.id;
   if (!userId) return null;
-  const db = getDb();
+  const db = await getDb();
   if (!db) return memGetBook(id, userId);
   const { data, error } = await db
     .from("books")
@@ -50,7 +50,7 @@ export async function createBook(
   userId?: string,
 ): Promise<Book> {
   userId ??= await requireUserId();
-  const db = getDb();
+  const db = await getDb();
   if (!db) return memCreateBook(input, userId);
   const { data, error } = await db
     .from("books")
@@ -73,7 +73,7 @@ export async function updateBook(
   userId?: string,
 ): Promise<Book> {
   userId ??= await requireUserId();
-  const db = getDb();
+  const db = await getDb();
   if (!db) return memUpdateBook(id, patch, userId);
   const { data, error } = await db
     .from("books")
@@ -88,15 +88,16 @@ export async function updateBook(
 
 export async function deleteBook(id: string, userId?: string): Promise<void> {
   userId ??= await requireUserId();
-  const db = getDb();
+  const db = await getDb();
   if (!db) return memDeleteBook(id, userId);
   const { error } = await db.from("books").delete().eq("id", id).eq("user_id", userId);
   if (error) throw new Error(error.message);
 }
 
 /** Guard for any write keyed on a bookId that came from the request. Knowing an id
- *  is not proof of owning it, and getDb() is the service-role client, so without
- *  this the write would land on whoever's book the id happens to name. */
+ *  is not proof of owning it, so without this the write would land on whoever's book
+ *  the id happens to name. RLS refuses that write too, but only where RLS is on:
+ *  this also holds for the memory store and for a pre-auth service-role deploy. */
 export async function assertOwnsBook(bookId: string, userId: string): Promise<void> {
   if (!(await getBook(bookId, userId))) throw new Error("Book not found.");
 }

@@ -9,7 +9,7 @@ import { memListAssets, memUpsertAsset } from "@/lib/db/memory-store";
 export async function listAssets(bookId: string, userId?: string): Promise<PublishAssetRow[]> {
   userId ??= (await getSessionUser())?.id;
   if (!userId) return [];
-  const db = getDb();
+  const db = await getDb();
   if (!db) return memListAssets(bookId, userId);
   const { data, error } = await db
     .from("publish_assets")
@@ -32,7 +32,7 @@ export async function upsertAsset(
   userId ??= await requireUserId();
   // Conflict target is (book_id, kind), not the owner — see upsertBrain.
   await assertOwnsBook(bookId, userId);
-  const db = getDb();
+  const db = await getDb();
   if (!db) return memUpsertAsset(bookId, kind, content, userId);
   const { data, error } = await db
     .from("publish_assets")

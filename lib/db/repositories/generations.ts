@@ -1,5 +1,5 @@
 import "server-only";
-import { getDb } from "@/lib/db/client";
+import { getAdminDb } from "@/lib/db/client";
 import { getSessionUser } from "@/lib/auth/session";
 import { type AgentName } from "@/lib/constants";
 
@@ -15,12 +15,19 @@ export interface GenerationLog {
 }
 
 /** Best-effort audit log of an AI generation. Never throws — logging must not
- *  break a user-facing action, and it silently no-ops when DB is unconfigured. */
+ *  break a user-facing action, and it silently no-ops when DB is unconfigured.
+ *
+ *  Deliberately the admin client, not getDb(): the row must land even when the user's
+ *  token expired mid-stream, and 0003_rls.sql grants users SELECT only on
+ *  ai_generations — a user-scoped insert would be denied by policy. An audit trail the
+ *  audited party can write is not one, and later tasks add columns (usage, cost) a
+ *  user must not be able to forge. Without a service-role key there is no client that
+ *  may insert here, so the log no-ops rather than failing the action. */
 export async function logGeneration(
   entry: GenerationLog,
   userId?: string,
 ): Promise<void> {
-  const db = getDb();
+  const db = getAdminDb();
   if (!db) return;
   try {
     // Signed out (real mode only): drop the log rather than attribute it to no one.
