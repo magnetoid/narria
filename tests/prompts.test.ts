@@ -224,6 +224,22 @@ describe("buildBrainSynthesis transcript cost bound", () => {
   });
 });
 
+describe("buildEdit selection cost bound", () => {
+  // chapterEditInput.selection is bigText (max 60,000) and reached the prompt with
+  // no truncation — the only caller-written field in this file that didn't, next to
+  // currentText.slice(-4000) thirty lines up and chapter.content.slice(0, 8000)
+  // twelve lines down.
+  it("caps a maximal 60,000-char selection", () => {
+    const built = buildEdit("rewrite", book(), null, chapter(), "s".repeat(60_000));
+    expect(built.prompt.length).toBeLessThan(10_000);
+  });
+
+  it("leaves a realistic selection untouched", () => {
+    const built = buildEdit("rewrite", book(), null, chapter(), "A short paragraph to rewrite.");
+    expect(built.prompt).toContain("A short paragraph to rewrite.");
+  });
+});
+
 describe("buildEdit / transform action instructions", () => {
   const transformActions = CHAPTER_AI_ACTIONS.filter((a) => a.group === "transform");
 

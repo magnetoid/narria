@@ -144,7 +144,7 @@ export function buildEdit(
 ${isAppend ? "Return only the new text." : "Return only the revised passage, ready to replace the original."}
 
 PASSAGE:
-${selection.trim() || "(no selection — use the current paragraph)"}`,
+${selection.trim().slice(0, 8000) || "(no selection — use the current paragraph)"}`,
   };
 }
 
