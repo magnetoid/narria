@@ -71,7 +71,10 @@ export type AgentName =
 // ── Rate limits ──────────────────────────────────────────────────────────────
 /** Ceilings on the NUMBER of paid model calls, enforced in the `ai` facade (see
  *  lib/rate-limit.ts). Tunable: these are cost guards, not product rules — raise them
- *  if legitimate writing hits the ceiling.
+ *  if legitimate writing hits the ceiling. The facade skips this enforcement entirely
+ *  when the resolved provider is the mock (lib/ai/index.ts: enforceCallBudget) — with
+ *  no ANTHROPIC_API_KEY there is nothing to guard the cost of, and the zero-setup demo
+ *  must not be throttled for a bill it will never receive.
  *
  *  These meter call count only. Per-call cost is bounded separately, by truncation
  *  where text enters a prompt (lib/ai/prompts.ts: brainContext, chapter content,

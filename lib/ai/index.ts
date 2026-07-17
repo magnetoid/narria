@@ -33,6 +33,14 @@ export function activeProviderName(): string {
   return getProvider().name;
 }
 
+/** Test-only: clears the cached provider so a test can change
+ *  NARRIA_AI_PROVIDER/ANTHROPIC_API_KEY and force a fresh resolution. Mirrors
+ *  __resetRateLimits and __resetMemoryStore, which exist for the same
+ *  cached-for-the-process reason. */
+export function __resetProvider(): void {
+  provider = null;
+}
+
 /** Per-agent model resolution (env-overridable). */
 export function modelFor(agent: AgentName): string {
   const fallback = process.env.NARRIA_MODEL_DEFAULT || "claude-opus-4-8";
@@ -62,8 +70,18 @@ async function caller(): Promise<Caller> {
 
 /** The throttle lives in this facade because it is the one choke point every AI call
  *  already flows through: no agent, action or route can reach a paid model without
- *  passing here, so no future AI surface can forget to meter. */
+ *  passing here, so no future AI surface can forget to meter.
+ *
+ *  It is skipped when the resolved provider is the mock. RATE_LIMITS documents
+ *  itself as a cost guard, not a product rule, and the mock is the zero-setup, $0
+ *  path: with no ANTHROPIC_API_KEY there is no bill and so no rationale to throttle,
+ *  yet the ceiling still fired — capping the whole zero-auth demo at a handful of
+ *  concurrent visitors and mis-reading the mock's instant replies as click-spam on a
+ *  10-calls-per-minute budget sized for a model that takes 10-20s per call. Reading
+ *  the provider through getProvider() (rather than re-deriving it from env here) means
+ *  this can never drift from what a call would have actually billed. */
 function enforceCallBudget(who: Caller): void {
+  if (activeProviderName() === "mock") return;
   const verdict = checkRateLimit(who.id, who.isDemo);
   if (!verdict.ok) throw new RateLimitError(verdict.retryAfterSeconds);
 }

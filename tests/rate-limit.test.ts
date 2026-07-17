@@ -15,8 +15,9 @@ import type { GenTextRequest } from "@/lib/ai/provider";
 // inside whichever test happens to run first put it within a few hundred ms of the
 // default timeout — a flake that had nothing to do with what the test asserts.
 let ai: typeof import("@/lib/ai").ai;
+let __resetProvider: typeof import("@/lib/ai").__resetProvider;
 beforeAll(async () => {
-  ({ ai } = await import("@/lib/ai"));
+  ({ ai, __resetProvider } = await import("@/lib/ai"));
 });
 
 const USER = "user-a";
@@ -46,6 +47,26 @@ vi.mock("@/lib/ai/providers/mock", () => ({
     }
     async generateStructured() {
       return { data: {}, model: "mock", tokens: 1 };
+    }
+  },
+}));
+
+// The cost guard now only enforces against a paid provider (see "the cost guard is
+// gated on a paid provider" below), so any test proving the guard itself still needs
+// a "paid" resolution to exercise. Stubbed the same shape as MockProvider above —
+// stubbing NARRIA_AI_PROVIDER="anthropic" must never let a test reach the real
+// Anthropic client.
+vi.mock("@/lib/ai/providers/anthropic", () => ({
+  AnthropicProvider: class {
+    readonly name = "anthropic";
+    streamText() {
+      return providerStream();
+    }
+    async generateText() {
+      return { text: "text", model: "anthropic", tokens: 1 };
+    }
+    async generateStructured() {
+      return { data: {}, model: "anthropic", tokens: 1 };
     }
   },
 }));
@@ -97,6 +118,7 @@ beforeEach(() => {
   // globalThis-backed state outlives the module graph — without this, one test's
   // spent budget would deny the next.
   __resetRateLimits();
+  __resetProvider();
   sessionUser = { id: USER, email: null, isDemo: true };
   providerStream = async function* () {
     yield "chunk";
@@ -317,6 +339,15 @@ describe("error codes", () => {
 // The facade is the choke point every agent already flows through, so the throttle
 // lives there rather than in each route: a new AI surface cannot forget it.
 describe("the ai facade meters every call", () => {
+  beforeEach(() => {
+    // This block's premise — the facade enforces the budget — only holds against a
+    // paid provider now that the mock is exempt (see "the cost guard is gated on a
+    // paid provider" below). Every test here needs that resolution, not just some of
+    // them, so it lives in this block's own beforeEach rather than repeated per test.
+    vi.stubEnv("NARRIA_AI_PROVIDER", "anthropic");
+    __resetProvider();
+  });
+
   it("throws RateLimitError from text() once the budget is spent", async () => {
     spendCallBudget(USER);
     const err = await rejection(ai.text(request()));
@@ -353,6 +384,30 @@ describe("the ai facade meters every call", () => {
   it("spends budget per call, so text() alone exhausts the window", async () => {
     for (let i = 0; i < RATE_LIMITS.aiCallsPerMinute; i++) await ai.text(request());
     expect(isRateLimitError(await rejection(ai.text(request())))).toBe(true);
+  });
+});
+
+// RATE_LIMITS is a cost guard, not a product rule: with no ANTHROPIC_API_KEY there is
+// no bill, so the zero-setup demo (every visitor, since there is no Supabase auth to
+// tell them apart) must not be throttled for one. The mock also replies instantly,
+// where aiCallsPerMinute is calibrated for a model that takes 10-20s per call.
+describe("the cost guard is gated on a paid provider", () => {
+  it("does not throttle the mock path: more mock calls than aiCallsPerMinute all succeed", async () => {
+    // Provider resolves to mock by default (beforeEach stubs NARRIA_AI_PROVIDER).
+    for (let i = 0; i < RATE_LIMITS.aiCallsPerMinute + 5; i++) {
+      await expect(ai.text(request())).resolves.toEqual({ text: "text", model: "mock", tokens: 1 });
+    }
+  });
+
+  it("still throttles once a paid provider is active", async () => {
+    // Exhausted directly through checkRateLimit rather than ai.text(): the point is
+    // to isolate the gate itself, not re-prove "the ai facade meters every call"
+    // above (which now runs this same scenario end-to-end under a paid provider).
+    spendCallBudget(USER);
+    vi.stubEnv("NARRIA_AI_PROVIDER", "anthropic");
+    __resetProvider();
+    const err = await rejection(ai.text(request()));
+    expect(isRateLimitError(err)).toBe(true);
   });
 });
 
@@ -403,6 +458,10 @@ describe("the ai facade never strands a stream slot", () => {
   });
 
   it("does not spend call budget on a stream denied for concurrency", async () => {
+    // Call budget is only spent against a paid provider (see "the cost guard is
+    // gated on a paid provider" below); this test is specifically about that spend.
+    vi.stubEnv("NARRIA_AI_PROVIDER", "anthropic");
+    __resetProvider();
     providerStream = async function* () {
       yield "one";
       yield "two";
