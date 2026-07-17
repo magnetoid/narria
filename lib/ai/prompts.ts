@@ -56,6 +56,16 @@ export function brainContext(book: Book, brain: BookBrain | null): string {
 }
 
 // ── Book Planner ────────────────────────────────────────────────────────────────
+/** Same cost-guard idiom as brainContext, applied here because interviewEntries caps
+ *  each answer (20,000 chars) and the entry count (50) but not their product — a
+ *  schema-valid interview is worth ~1M characters, and finishInterview/regenerateBrain
+ *  both route through this one function, so capping here bounds both at once. Slicing
+ *  per answer first (rather than only slicing the joined result) matters: a flat cap
+ *  on the join would let one long first answer consume the whole budget and silently
+ *  drop every later Q&A pair, instead of the "truncated tail" trade brainContext makes. */
+const MAX_ANSWER_CHARS = 2000;
+const MAX_TRANSCRIPT_CHARS = 8000;
+
 export function buildBrainSynthesis(
   book: Book,
   qa: { question: string; answer: string }[],
@@ -63,8 +73,9 @@ export function buildBrainSynthesis(
   const type = getBookType(book.book_type);
   const transcript = qa
     .filter((x) => x.answer.trim())
-    .map((x) => `Q: ${x.question}\nA: ${x.answer}`)
-    .join("\n\n");
+    .map((x) => `Q: ${x.question}\nA: ${x.answer.slice(0, MAX_ANSWER_CHARS)}`)
+    .join("\n\n")
+    .slice(0, MAX_TRANSCRIPT_CHARS);
   return {
     system: `${PREAMBLE}\n\nYou are the Book Planner. Turn a guided interview into a structured Book Brain for a ${type.label.toLowerCase()}.`,
     prompt: `Here is the author's interview for "${book.title}" (${type.label}).

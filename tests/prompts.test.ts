@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { brainContext, buildContinue, buildEdit } from "@/lib/ai/prompts";
+import { brainContext, buildBrainSynthesis, buildContinue, buildEdit } from "@/lib/ai/prompts";
 import { CHAPTER_AI_ACTIONS } from "@/lib/constants";
-import { brainPatch } from "@/lib/validation";
+import { brainPatch, interviewEntries } from "@/lib/validation";
 import type { Book, BookBrain, Chapter } from "@/lib/db/types";
 
 const book = (overrides: Partial<Book> = {}): Book => ({
@@ -166,6 +166,61 @@ describe("brainContext cost bound", () => {
     expect(ctx).toContain("Busy parents");
     expect(ctx).toContain("Check the 1998 census figures");
     expect(ctx.length).toBeLessThan(8000);
+  });
+});
+
+describe("buildBrainSynthesis transcript cost bound", () => {
+  // finishInterview's server action validates against interviewEntries — max 50
+  // entries x { question: shortText(500), answer: shortText(20_000) } — before this
+  // fix the whole thing was joined into `transcript` and interpolated with no
+  // truncation: ~1.025M schema-valid characters reaching an unmetered structured call.
+  const maximalEntries = () =>
+    Array.from({ length: 50 }, (_, i) => ({
+      id: `q${i}`,
+      question: "q".repeat(500),
+      answer: "a".repeat(20_000),
+    }));
+
+  it("is an interview the validation schema actually accepts", () => {
+    // Guards the premise, same as maximalBrain above: if interviewEntries ever
+    // tightens, this attack evaporates and this test says so.
+    const parsed = interviewEntries.safeParse(maximalEntries());
+    expect(parsed.success).toBe(true);
+  });
+
+  it("caps the prompt built from a maximal interview", () => {
+    const qa = maximalEntries().map((e) => ({ question: e.question, answer: e.answer }));
+    const uncappedSize = qa.reduce((n, x) => n + x.question.length + x.answer.length, 0);
+    expect(uncappedSize).toBeGreaterThan(1_000_000);
+
+    const built = buildBrainSynthesis(book(), qa);
+    expect(built.prompt.length).toBeLessThan(10_000);
+  });
+
+  it("does not let one long answer crowd out the others", () => {
+    // Justifies budgeting per answer rather than only slicing the joined string: a
+    // flat slice alone would let the first monster answer consume the whole cap and
+    // silently drop every later question — exactly the "long tail dropped" trade the
+    // brainContext comment accepts for its own fields, but here it would drop entire
+    // Q&A pairs rather than a truncated tail.
+    const qa = [
+      { question: "Q1", answer: "x".repeat(20_000) },
+      { question: "Q2", answer: "distinct-marker-two" },
+      { question: "Q3", answer: "distinct-marker-three" },
+    ];
+    const built = buildBrainSynthesis(book(), qa);
+    expect(built.prompt).toContain("distinct-marker-two");
+    expect(built.prompt).toContain("distinct-marker-three");
+  });
+
+  it("leaves a realistic interview untouched", () => {
+    const qa = [
+      { question: "What is your book about?", answer: "A memoir about learning to sail late in life." },
+      { question: "Who is this for?", answer: "Readers who started something new after 50." },
+    ];
+    const built = buildBrainSynthesis(book(), qa);
+    expect(built.prompt).toContain("A memoir about learning to sail late in life.");
+    expect(built.prompt).toContain("Readers who started something new after 50.");
   });
 });
 
