@@ -68,8 +68,15 @@ create policy "book_brain_insert_own" on book_brain
   for insert with check (user_id = (select auth.uid()));
 
 -- upsertBrain() conflicts on book_id alone, so an upsert aimed at someone else's
--- book resolves to their row: the update policy is what makes that a no-op instead
--- of a hostile takeover of the row's user_id.
+-- book resolves to their existing row rather than inserting a new one. The check
+-- below (user_id = auth.uid()) does NOT by itself stop that from reassigning the
+-- row's user_id to the caller: it is satisfied by the caller's own identity no
+-- matter whose book_id they named, so on its own this policy is not what turns
+-- the upsert into a no-op — assertOwnsBook() in app code is what currently blocks
+-- it. 0004_rls_book_graph.sql adds the guarantee at the database level: an
+-- exists() against books that requires the named book_id to already belong to the
+-- caller, so a row's user_id can only ever be reassigned by someone who owns the
+-- book it points at.
 drop policy if exists "book_brain_update_own" on book_brain;
 create policy "book_brain_update_own" on book_brain
   for update using (user_id = (select auth.uid()))
