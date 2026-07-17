@@ -69,16 +69,27 @@ export type AgentName =
   | "metadata";
 
 // ── Rate limits ──────────────────────────────────────────────────────────────
-/** Per-user ceiling on paid model calls, enforced in the `ai` facade (see
- *  lib/rate-limit.ts). Tunable: these are cost guards, not product rules — raise
- *  them if legitimate writing hits the ceiling. The demo user is metered too; it is
- *  the abuse surface on a public deployment.
+/** Ceilings on paid model calls, enforced in the `ai` facade (see lib/rate-limit.ts).
+ *  Tunable: these are cost guards, not product rules — raise them if legitimate
+ *  writing hits the ceiling.
  *
  *  `concurrentStreams` exists because the per-minute counter cannot see a few
- *  long-lived streams each burning tokens for minutes on one call apiece. */
+ *  long-lived streams each burning tokens for minutes on one call apiece.
+ *
+ *  The `demo*` pair is a ceiling across ALL demo callers at once, not per caller.
+ *  A demo identity is a cookie the visitor carries and the proxy will mint on
+ *  demand (lib/auth/session.ts, proxy.ts), so the per-caller limits above are only
+ *  a fairness control there: rotating the cookie buys a fresh per-caller budget.
+ *  These two are keyed on a name the server chose, so they are what actually bounds
+ *  the bill when a deployment has an ANTHROPIC_API_KEY and no Supabase auth — a
+ *  public, login-less endpoint on a real key. The tradeoff is deliberate: an abuser
+ *  can exhaust the shared demo budget and leave honest visitors throttled, which is
+ *  the cheaper failure of the two. */
 export const RATE_LIMITS = {
   aiCallsPerMinute: 10,
   concurrentStreams: 4,
+  demoCallsPerMinute: 60,
+  demoConcurrentStreams: 12,
 } as const;
 
 // ── Chapter workspace AI actions ─────────────────────────────────────────────

@@ -43,27 +43,35 @@ export function modelFor(agent: AgentName): string {
 
 const approxTokens = (s: string) => Math.max(1, Math.ceil(s.length / 4));
 
-/** Whom the throttle is keyed on. Demo mode always resolves a user, so the throw
- *  only fires in real-auth mode when signed out — where the route already answered
- *  401 and no action reaches an AI call without a book it could load. */
-async function callerId(): Promise<string> {
+/** `isDemo` travels with the id because it says whether the caller could have minted
+ *  that id itself: a demo id is an unsigned cookie, so its per-caller budget is only
+ *  a fairness control and the shared demo ceiling is the real bound. */
+interface Caller {
+  id: string;
+  isDemo: boolean;
+}
+
+/** Whom the throttle is keyed on. Demo mode always resolves a user, so the throw only
+ *  fires in real-auth mode when signed out — where the route already answered 401 and
+ *  no action reaches an AI call without a book it could load. */
+async function caller(): Promise<Caller> {
   const user = await getSessionUser();
   if (!user) throw new Error("Sign in to use AI features.");
-  return user.id;
+  return { id: user.id, isDemo: user.isDemo };
 }
 
 /** The throttle lives in this facade because it is the one choke point every AI call
  *  already flows through: no agent, action or route can reach a paid model without
  *  passing here, so no future AI surface can forget to meter. */
-function enforceCallBudget(userId: string): void {
-  const verdict = checkRateLimit(userId);
+function enforceCallBudget(who: Caller): void {
+  const verdict = checkRateLimit(who.id, who.isDemo);
   if (!verdict.ok) throw new RateLimitError(verdict.retryAfterSeconds);
 }
 
 /** The facade every agent uses. Resolves model + provider and writes the audit log. */
 export const ai = {
   async text(req: GenTextRequest): Promise<GenResult> {
-    enforceCallBudget(await callerId());
+    enforceCallBudget(await caller());
     const model = req.model ?? modelFor(req.meta.agent);
     const res = await getProvider().generateText({ ...req, model });
     await logGeneration({
@@ -80,7 +88,7 @@ export const ai = {
   },
 
   async structured<T>(req: GenStructuredRequest<T>): Promise<StructuredResult<T>> {
-    enforceCallBudget(await callerId());
+    enforceCallBudget(await caller());
     const model = req.model ?? modelFor(req.meta.agent);
     const res = await getProvider().generateStructured({ ...req, model });
     await logGeneration({
@@ -100,13 +108,13 @@ export const ai = {
   // must map RateLimitError to a status has to pull one chunk before it commits to a
   // response — see app/api/ai/continue/route.ts.
   async *stream(req: GenTextRequest): AsyncIterable<string> {
-    const userId = await callerId();
+    const who = await caller();
     // Taken before the budget check so a stream denied for concurrency does not also
     // spend a call the caller never got.
-    const slot = acquireStreamSlot(userId);
+    const slot = acquireStreamSlot(who.id, who.isDemo);
     if (!slot.ok) throw new RateLimitError(slot.retryAfterSeconds);
     try {
-      enforceCallBudget(userId);
+      enforceCallBudget(who);
       const model = req.model ?? modelFor(req.meta.agent);
       let acc = "";
       for await (const chunk of getProvider().streamText({ ...req, model })) {

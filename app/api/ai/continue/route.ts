@@ -63,9 +63,16 @@ export async function POST(req: Request) {
         headers: { ...STREAM_HEADERS, "Retry-After": String(e.retryAfterSeconds) },
       });
     }
-    // Any other first-pull failure stays a 200 carrying the notice, so a provider
-    // that dies on chunk 1 reads the same as one that dies on chunk 2.
-    return new Response(INTERRUPTED_NOTICE, { headers: STREAM_HEADERS });
+    // Not the mid-stream case: nothing was generated and the status is still ours to
+    // choose, so say so. A 200 carrying an apology tells the client that nothing is
+    // wrong, and it would also dress up whatever the facade refused *before*
+    // generating — a misconfiguration that getSessionUser() throws to refuse service
+    // loudly must not arrive as a polite notice in the prose.
+    console.error("ai/continue first chunk", e);
+    return new Response("Generation failed. Please try again.", {
+      status: 500,
+      headers: STREAM_HEADERS,
+    });
   }
 
   const encoder = new TextEncoder();
@@ -76,7 +83,11 @@ export async function POST(req: Request) {
           controller.enqueue(encoder.encode(step.value));
         }
         controller.close();
-      } catch {
+      } catch (e) {
+        // The status is committed by now, so the notice in the body is all the reader
+        // can be told — but the operator must still learn what died, or a dead API key
+        // and a client hanging up read identically during an incident.
+        console.error("ai/continue mid-stream", e);
         // Leaving the generator suspended strands the facade's stream slot — its
         // `finally` only runs when the generator completes or is returned — and the
         // user is locked out of streaming until the process restarts.
