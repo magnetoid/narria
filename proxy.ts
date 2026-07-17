@@ -32,11 +32,17 @@ function demoProxy(request: NextRequest): NextResponse {
     sameSite: "lax",
     path: "/",
     maxAge: ONE_YEAR_SECONDS,
-    // Conditional rather than absent: this id addresses a whole workspace, so it
-    // must not cross a plain-http hop in production, but requiring TLS in dev
-    // would stop the cookie being stored at all and mint a new workspace on every
-    // request — silent data loss on the zero-setup path.
-    secure: process.env.NODE_ENV === "production",
+    // No `secure` flag, by design — not an oversight: this id carries no
+    // credential, only a random workspace address into the ephemeral in-memory
+    // store (a durable store with no way to sign in refuses to boot, per
+    // getSessionUser(), and real-auth mode never mints this cookie at all — see
+    // isAuthConfigured()). `.next/standalone/server.js` hardcodes
+    // NODE_ENV=production, so gating on it made every plain-http demo reached
+    // by hostname/IP instead of `localhost` (e.g. `docker compose up` viewed
+    // from another machine on the LAN, no TLS) have its cookie rejected by the
+    // client — the proxy would re-mint a workspace on every request and the
+    // visitor would silently lose their books. That's a real dent in the
+    // zero-setup invariant for a flag that, here, buys no confidentiality.
   });
   return response;
 }
