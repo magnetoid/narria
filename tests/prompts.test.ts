@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { brainContext, buildBrainSynthesis, buildContinue, buildEdit } from "@/lib/ai/prompts";
+import {
+  brainContext,
+  buildBrainSynthesis,
+  buildContinue,
+  buildEdit,
+  buildMetadata,
+  buildResearch,
+} from "@/lib/ai/prompts";
 import { CHAPTER_AI_ACTIONS } from "@/lib/constants";
-import { brainPatch, interviewEntries } from "@/lib/validation";
+import { brainPatch, chapterPatch, interviewEntries } from "@/lib/validation";
 import type { Book, BookBrain, Chapter } from "@/lib/db/types";
 
 const book = (overrides: Partial<Book> = {}): Book => ({
@@ -262,5 +269,100 @@ describe("buildEdit / transform action instructions", () => {
     const unknown = buildEdit("not-a-real-action", b, null, c, "Some passage.");
     const rewrite = buildEdit("rewrite", b, null, c, "Some passage.");
     expect(unknown.prompt).toBe(rewrite.prompt);
+  });
+});
+
+describe("buildContinue key_points cost bound", () => {
+  // chapterPatch caps each key point (500 chars) and the array (50 items) but not
+  // their join — up to 25,000 schema-valid characters reachable via
+  // updateChapterAction, then joined with no truncation: `key_points.join("; ")`.
+  const maximalKeyPoints = () => Array.from({ length: 50 }, (_, i) => `k${i}-`.repeat(125));
+
+  it("is a key_points array the validation schema actually accepts", () => {
+    // Guards the premise, same as maximalBrain/maximalEntries above: if chapterPatch
+    // ever tightens, this attack evaporates and this test says so.
+    const parsed = chapterPatch.safeParse({ key_points: maximalKeyPoints() });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("caps the prompt built from maximal key_points", () => {
+    const keyPoints = maximalKeyPoints();
+    const uncappedSize = keyPoints.join("; ").length;
+    expect(uncappedSize).toBeGreaterThan(20_000);
+
+    const built = buildContinue(book(), null, chapter({ key_points: keyPoints }), "");
+    expect(built.prompt.length).toBeLessThan(10_000);
+  });
+
+  it("does not let one long key point crowd out the others", () => {
+    // Same reasoning as the interview transcript: budgeting per item first (rather
+    // than only slicing the joined string) keeps the window from being consumed by
+    // whichever key point happens to come first.
+    const keyPoints = ["x".repeat(500), "distinct-marker-two", "distinct-marker-three"];
+    const built = buildContinue(book(), null, chapter({ key_points: keyPoints }), "");
+    expect(built.prompt).toContain("distinct-marker-two");
+    expect(built.prompt).toContain("distinct-marker-three");
+  });
+
+  it("leaves realistic key points untouched", () => {
+    const built = buildContinue(
+      book(),
+      null,
+      chapter({ key_points: ["Introduce the harbor", "Foreshadow the storm"] }),
+      "",
+    );
+    expect(built.prompt).toContain("Introduce the harbor");
+    expect(built.prompt).toContain("Foreshadow the storm");
+  });
+});
+
+describe("buildMetadata toc cost bound", () => {
+  // Every chapter title is bounded to 200 chars by chapterPatch on the edit path, but
+  // OutlineSchema.title (lib/ai/schemas.ts) has no length bound on the AI-authored
+  // path, and nothing caps how many chapters a book can have (addChapterAction has no
+  // ceiling). `toc` joined every title with no truncation.
+  const manyChapters = (n: number, titleLength = 200): Chapter[] =>
+    Array.from({ length: n }, (_, i) => chapter({ id: `c${i}`, title: "t".repeat(titleLength) }));
+
+  it("caps the prompt for a book with many chapters", () => {
+    const chapters = manyChapters(500);
+    const uncappedSize = chapters.map((c, i) => `${i + 1}. ${c.title}`).join("\n").length;
+    expect(uncappedSize).toBeGreaterThan(20_000);
+
+    const built = buildMetadata("description", book(), null, chapters);
+    expect(built.prompt.length).toBeLessThan(10_000);
+  });
+
+  it("caps a single very long chapter title", () => {
+    // A title this long can only arrive via the AI outline path — OutlineSchema.title
+    // has no length bound — so this must be capped independently of chapterPatch.
+    const chapters = [chapter({ title: "t".repeat(20_000) })];
+    const built = buildMetadata("description", book(), null, chapters);
+    expect(built.prompt.length).toBeLessThan(10_000);
+  });
+
+  it("leaves a normal table of contents untouched", () => {
+    const chapters = [
+      chapter({ id: "c1", title: "The Harbor" }),
+      chapter({ id: "c2", title: "The Storm" }),
+    ];
+    const built = buildMetadata("description", book(), null, chapters);
+    expect(built.prompt).toContain("1. The Harbor");
+    expect(built.prompt).toContain("2. The Storm");
+  });
+});
+
+describe("buildResearch topic cost bound", () => {
+  // `topic` is a plain `string` with no schema at all — no caller today (research()
+  // in lib/ai/agents/researchAssistant.ts has no caller anywhere in the codebase), but
+  // it has zero defense if it is ever wired up.
+  it("caps a very long topic", () => {
+    const built = buildResearch(book(), null, "t".repeat(100_000));
+    expect(built.prompt.length).toBeLessThan(10_000);
+  });
+
+  it("leaves a realistic topic untouched", () => {
+    const built = buildResearch(book(), null, "18th-century whaling routes");
+    expect(built.prompt).toContain("18th-century whaling routes");
   });
 });

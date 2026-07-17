@@ -98,17 +98,31 @@ Return 8–14 chapters. For each: a real title (not "Chapter 1"), a one-sentence
 }
 
 // ── Chapter Writer ───────────────────────────────────────────────────────────────
+/** chapterPatch caps each key point (500 chars) and the array (50 items) but not
+ *  their join — up to 25,000 schema-valid characters reachable via
+ *  updateChapterAction, landing in one unbounded prompt line. Sliced per item first
+ *  (500 -> 200; a key point is a short bullet hint, not prose, so 200 is generous)
+ *  so one point near the schema max can't crowd out the rest, then the joined line
+ *  capped to 2000 total — enough for ~10 points at the per-item cap, well past the
+ *  3-5 buildOutline asks for. Same idiom as the interview-transcript cap above. */
+const MAX_KEY_POINT_CHARS = 200;
+const MAX_KEY_POINTS_CHARS = 2000;
+
 export function buildContinue(
   book: Book,
   brain: BookBrain | null,
   chapter: Chapter,
   currentText: string,
 ): BuiltPrompt {
+  const keyPoints = (chapter.key_points ?? [])
+    .map((k) => k.slice(0, MAX_KEY_POINT_CHARS))
+    .join("; ")
+    .slice(0, MAX_KEY_POINTS_CHARS);
   return {
     system: `${PREAMBLE}\n\nYou are the Chapter Writer. Continue the manuscript seamlessly in the author's voice.\n\n${brainContext(book, brain)}`,
     prompt: `Chapter: "${chapter.title}"
 Goal: ${chapter.goal ?? "(open)"}
-Key points still to cover: ${(chapter.key_points ?? []).join("; ") || "(use your judgement)"}
+Key points still to cover: ${keyPoints || "(use your judgement)"}
 
 Continue writing from where this leaves off. Write 2–4 polished paragraphs. Match the existing rhythm; do not repeat what's already written; do not summarize.
 
@@ -181,13 +195,24 @@ const METADATA_INSTRUCTIONS: Record<PublishAssetKind, string> = {
   sales_copy: "Write persuasive sales-page copy (~250 words): headline, the problem, the promise, what's inside, and a call to action.",
 };
 
+// chapterPatch caps a title to 200 chars on the edit path, but OutlineSchema.title
+// (lib/ai/schemas.ts) has no length bound on the AI-authored path, and nothing caps
+// how many chapters a book can have (addChapterAction has no ceiling). Capped per
+// title (defends the outline path independently of chapterPatch) and again on the
+// joined block (200-char titles idiom), matching chapter.content.slice(0, 8000) below.
+const MAX_TOC_TITLE_CHARS = 200;
+const MAX_TOC_CHARS = 8000;
+
 export function buildMetadata(
   kind: PublishAssetKind,
   book: Book,
   brain: BookBrain | null,
   chapters: Chapter[],
 ): BuiltPrompt {
-  const toc = chapters.map((c, i) => `${i + 1}. ${c.title}`).join("\n");
+  const toc = chapters
+    .map((c, i) => `${i + 1}. ${c.title.slice(0, MAX_TOC_TITLE_CHARS)}`)
+    .join("\n")
+    .slice(0, MAX_TOC_CHARS);
   return {
     system: `${PREAMBLE}\n\nYou are the Metadata agent for the Publish Center.\n\n${brainContext(book, brain)}`,
     prompt: `${METADATA_INSTRUCTIONS[kind]}
@@ -198,9 +223,11 @@ ${toc ? `TABLE OF CONTENTS:\n${toc}` : ""}`,
 
 // ── Research & Fact-check (used by chapter tools / brain) ─────────────────────────
 export function buildResearch(book: Book, brain: BookBrain | null, topic: string): BuiltPrompt {
+  // topic has no schema at all (no caller today — see researchAssistant.ts). Capped
+  // here anyway so wiring up a caller later doesn't reintroduce this bug class.
   return {
     system: `${PREAMBLE}\n\nYou are the Research Assistant. Provide concise, useful background the author can weave in.\n\n${brainContext(book, brain)}`,
-    prompt: `Give the author research notes on: "${topic}". 4–6 tight bullet points relevant to this book. Flag anything that should be verified.`,
+    prompt: `Give the author research notes on: "${topic.slice(0, 2000)}". 4–6 tight bullet points relevant to this book. Flag anything that should be verified.`,
   };
 }
 
