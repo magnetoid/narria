@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { getBook, updateBook } from "@/lib/db/repositories/books";
 import { upsertBrain } from "@/lib/db/repositories/brain";
 import { synthesizeBrain } from "@/lib/ai/agents/bookPlanner";
+import { errorCode, type ActionError } from "@/lib/errors";
 import { idSchema, interviewEntries as interviewEntriesSchema } from "@/lib/validation";
 
 export interface InterviewEntry {
@@ -35,7 +36,7 @@ export async function saveInterview(
 export async function finishInterview(
   bookId: string,
   entries: InterviewEntry[],
-): Promise<{ error: string } | void> {
+): Promise<ActionError | void> {
   const parsedId = idSchema.safeParse(bookId);
   const parsedEntries = interviewEntriesSchema.safeParse(entries);
   if (!parsedId.success || !parsedEntries.success) return { error: "Invalid interview answers." };
@@ -64,7 +65,7 @@ export async function finishInterview(
     });
     await updateBook(bookId, { status: "outlining" });
   } catch (e) {
-    return { error: (e as Error).message };
+    return { error: (e as Error).message, code: errorCode(e) };
   }
 
   revalidatePath(`/books/${bookId}`, "layout");

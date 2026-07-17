@@ -6,6 +6,7 @@ import { listChapters } from "@/lib/db/repositories/chapters";
 import { upsertAsset } from "@/lib/db/repositories/publish";
 import { generateAsset } from "@/lib/ai/agents/metadata";
 import type { PublishAssetKind } from "@/lib/constants";
+import { errorCode, type ActionError } from "@/lib/errors";
 import { assetContent as assetContentSchema, idSchema, publishAssetKind } from "@/lib/validation";
 
 type AssetContent = { text?: string; items?: string[] };
@@ -13,7 +14,7 @@ type AssetContent = { text?: string; items?: string[] };
 export async function generateAssetAction(
   bookId: string,
   kind: PublishAssetKind,
-): Promise<{ content: AssetContent } | { error: string }> {
+): Promise<{ content: AssetContent } | ActionError> {
   const parsedId = idSchema.safeParse(bookId);
   const parsedKind = publishAssetKind.safeParse(kind);
   if (!parsedId.success || !parsedKind.success) return { error: "Invalid asset request." };
@@ -28,7 +29,7 @@ export async function generateAssetAction(
     const row = await upsertAsset(bookId, kind, content);
     return { content: row.content };
   } catch (e) {
-    return { error: (e as Error).message };
+    return { error: (e as Error).message, code: errorCode(e) };
   }
 }
 

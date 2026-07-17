@@ -8,6 +8,7 @@ import {
 } from "docx";
 import { getBook } from "@/lib/db/repositories/books";
 import { listChapters } from "@/lib/db/repositories/chapters";
+import { getSessionUser } from "@/lib/auth/session";
 import { htmlToText } from "@/lib/utils";
 import { idSchema } from "@/lib/validation";
 
@@ -21,10 +22,19 @@ export async function GET(
   const { bookId } = await params;
   const parsedId = idSchema.safeParse(bookId);
   if (!parsedId.success) return new Response("Invalid book id.", { status: 400 });
-  const book = await getBook(bookId);
+  // idSchema trims — use the parsed id everywhere so the read matches the stored key.
+  const id = parsedId.data;
+
+  // Demo mode always resolves a user, so this only turns anyone away in real-auth mode.
+  const user = await getSessionUser();
+  if (!user) return new Response("Sign in to export your book.", { status: 401 });
+
+  // getBook filters by owner, so another author's manuscript reads as missing. 404
+  // rather than 403: the status itself must not confirm that the id exists.
+  const book = await getBook(id, user.id);
   if (!book) return new Response("Not found", { status: 404 });
 
-  const chapters = await listChapters(bookId);
+  const chapters = await listChapters(id, user.id);
 
   const children: Paragraph[] = [
     new Paragraph({

@@ -68,6 +68,19 @@ export type AgentName =
   | "factCheck"
   | "metadata";
 
+// ── Rate limits ──────────────────────────────────────────────────────────────
+/** Per-user ceiling on paid model calls, enforced in the `ai` facade (see
+ *  lib/rate-limit.ts). Tunable: these are cost guards, not product rules — raise
+ *  them if legitimate writing hits the ceiling. The demo user is metered too; it is
+ *  the abuse surface on a public deployment.
+ *
+ *  `concurrentStreams` exists because the per-minute counter cannot see a few
+ *  long-lived streams each burning tokens for minutes on one call apiece. */
+export const RATE_LIMITS = {
+  aiCallsPerMinute: 10,
+  concurrentStreams: 4,
+} as const;
+
 // ── Chapter workspace AI actions ─────────────────────────────────────────────
 export type AiActionGroup = "write" | "transform" | "review";
 /** How the result returns to the workspace. */

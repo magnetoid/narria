@@ -5,6 +5,7 @@ import { getBook } from "@/lib/db/repositories/books";
 import { getBrain, upsertBrain, type BrainPatch } from "@/lib/db/repositories/brain";
 import { synthesizeBrain } from "@/lib/ai/agents/bookPlanner";
 import { interviewQuestions } from "@/lib/interview";
+import { errorCode, type ActionError } from "@/lib/errors";
 import { brainPatch as brainPatchSchema, idSchema } from "@/lib/validation";
 
 export async function saveBrain(
@@ -27,7 +28,7 @@ export async function saveBrain(
  *  synthesized fields (interview answers are preserved). */
 export async function regenerateBrain(
   bookId: string,
-): Promise<{ ok: true } | { error: string }> {
+): Promise<{ ok: true } | ActionError> {
   const parsedId = idSchema.safeParse(bookId);
   if (!parsedId.success) return { error: "Invalid book id." };
   // idSchema trims — use the parsed id everywhere so reads and writes share one key.
@@ -48,6 +49,6 @@ export async function regenerateBrain(
     revalidatePath(`/books/${bookId}`, "layout");
     return { ok: true };
   } catch (e) {
-    return { error: (e as Error).message };
+    return { error: (e as Error).message, code: errorCode(e) };
   }
 }

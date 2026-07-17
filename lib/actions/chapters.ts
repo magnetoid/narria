@@ -12,12 +12,13 @@ import {
 } from "@/lib/db/repositories/chapters";
 import { generateOutline } from "@/lib/ai/agents/bookPlanner";
 import type { Chapter } from "@/lib/db/types";
+import { errorCode, type ActionError } from "@/lib/errors";
 import { chapterPatch as chapterPatchSchema, idSchema, reorderChaptersInput } from "@/lib/validation";
 
 /** Generate (or regenerate) the whole table of contents from the Book Brain. */
 export async function generateOutlineAction(
   bookId: string,
-): Promise<{ ok: true } | { error: string }> {
+): Promise<{ ok: true } | ActionError> {
   const parsedId = idSchema.safeParse(bookId);
   if (!parsedId.success) return { error: "Invalid book id." };
   // idSchema trims — use the parsed id everywhere so reads and writes share one key.
@@ -32,7 +33,7 @@ export async function generateOutlineAction(
     revalidatePath(`/books/${bookId}/outline`);
     return { ok: true };
   } catch (e) {
-    return { error: (e as Error).message };
+    return { error: (e as Error).message, code: errorCode(e) };
   }
 }
 
