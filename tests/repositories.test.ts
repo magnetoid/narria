@@ -142,7 +142,10 @@ describe("repository ownership (another user's ids are invisible)", () => {
 });
 
 // The destructive half of the same IDOR: an id is not a capability. Every write
-// must prove ownership, because getDb() is service-role and nothing else will.
+// must prove ownership. This suite runs against the memory store, which has no
+// RLS at all, so these explicit filters and assertOwnsBook() guards are the only
+// tenancy check on this path — RLS (supabase/migrations/0003, 0004) is the
+// backstop where it is actually on, not a replacement for them.
 describe("repository ownership (another user's ids are unwritable)", () => {
   it("updateBook cannot rename someone else's book", async () => {
     const book = await createBook({ title: "Mine", book_type: "novel" }, USER);

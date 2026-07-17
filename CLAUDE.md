@@ -15,7 +15,8 @@ pnpm exec tsc --noEmit    # type-check (CI runs this; there is no `typecheck` sc
 docker compose up --build # local production test → http://localhost:3000
 ```
 
-CI (`.github/workflows/ci.yml`) runs lint → `tsc --noEmit` → build. There is no test suite.
+CI (`.github/workflows/ci.yml`) runs lint → `tsc --noEmit` → `pnpm test` → build. `pnpm test` runs
+the vitest suite in `tests/` (124+ tests as of this writing).
 
 Turbopack dev can be slow/unstable here. For a faithful production run, use the standalone
 build: `pnpm build && node .next/standalone/server.js` (copy `.next/static` + `public` into
